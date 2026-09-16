@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Analytics — Utility Suite</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%230f172a'/></svg>" />
+<link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+<header class="container site-header">
+  <a href="index.html" class="logo"><span class="logo-mark"></span><span>Utility Suite</span></a>
+  <div class="header-actions">
+    <a href="index.html" class="btn btn-outline">← Back to site</a>
+    <button id="themeBtn" class="btn btn-outline btn-icon" aria-label="Toggle theme">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+  </div>
+</header>
+<main class="container">
+  <div id="gate" class="auth-gate">
+    <h2>Owner access required</h2>
+    <p>Sign in with GitHub to view private analytics.</p>
+    <button id="signIn" class="btn btn-primary">Sign in with GitHub</button>
+    <p style="margin-top:16px;font-size:12px;color:var(--text-3)">Your GitHub identity is verified by a serverless proxy. The GoatCounter API key never reaches the browser.</p>
+  </div>
+  <div id="dash" class="hidden">
+    <div class="dash-header">
+      <div class="dash-title">Analytics Overview</div>
+      <div class="filter-bar">
+        <button class="filter-chip" data-range="1">Today</button>
+        <button class="filter-chip active" data-range="7">Last 7 days</button>
+        <button class="filter-chip" data-range="30">Last 30 days</button>
+        <button class="filter-chip" data-range="90">Last 90 days</button>
+      </div>
+    </div>
+    <div id="stats" class="stat-grid"></div>
+    <div class="section-title">Traffic trend</div>
+    <div class="card-panel"><div id="spark" class="spark"></div></div>
+    <div class="section-title">Top pages</div>
+    <div class="card-panel"><table class="data-table" id="pages"><thead><tr><th>Page</th><th class="num">Views</th></tr></thead><tbody></tbody></table></div>
+    <div class="section-title">Tool usage</div>
+    <div class="card-panel"><table class="data-table" id="tools"><thead><tr><th>Tool</th><th class="num">Opens</th><th class="num">Starts</th><th class="num">Completions</th><th class="num">Downloads</th></tr></thead><tbody></tbody></table></div>
+    <div class="section-title">Referrers</div>
+    <div class="card-panel"><table class="data-table" id="refs"><thead><tr><th>Source</th><th class="num">Visits</th></tr></thead><tbody></tbody></table></div>
+  </div>
+</main>
+<div id="toasts"></div>
+<script type="module">
+const PROXY_URL = 'https://your-worker.workers.dev';
+const TOKEN_KEY = 'gsuite_dash_token';
+
+(function theme() {
+  const saved = localStorage.getItem('theme');
+  const prefersDark = matchMedia('(prefers-color-scheme: dark)').matches;
+  document.documentElement.dataset.theme = saved || (prefersDark ? 'dark' : 'light');
+  document.getElementById('themeBtn').addEventListener('click', () => {
+    const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    localStorage.setItem('theme', next);
+  });
+})();
+
+function signIn() {
+  location.href = PROXY_URL + '/auth?return=' + encodeURIComponent(location.href.split('#')[0]);
+}
+function getTokenFromUrl() {
+  const p = new URLSearchParams(location.search);
+  const t = p.get('token');
+  if (t) { sessionStorage.setItem(TOKEN_KEY, t); history.replaceState({}, '', location.pathname); return t; }
+  return sessionStorage.getItem(TOKEN_KEY);
+}
+async function fetchStats(range) {
+  const token = sessionStorage.getItem(TOKEN_KEY);
+  const res = await fetch(PROXY_URL + '/stats?range=' + range, { headers: { Authorization: 'Bearer ' + token } });
+  if (res.status === 401 || res.status === 403) throw new Error('unauthorized');
+  if (!res.ok) throw new Error('failed');
+  return res.json();
+}
+const state = { range: 7 };
+function escape(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+function toast(msg, type) {
+  const el = document.createElement('div');
+  el.className = 'toast' + (type === 'error' ? ' err' : '');
+  el.textContent = msg;
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+function statCard(label, value) {
+  return '<div class="stat"><div class="lbl">' + label + '</div><div class="val">' + (value || 0) + '</div></div>';
+}
+function fillTable(id, rows, keys) {
+  const tbody = document.querySelector('#' + id + ' tbody');
+  if (!rows || !rows.length) { tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;color:var(--text-3);padding:24px">No data</td></tr>'; return; }
+  tbody.innerHTML = rows.map((r) => '<tr><td>' + escape(r[keys[0]] || '—') + '</td><td class="num">' + (r[keys[1]] || 0) + '</td></tr>').join('');
+}
+async function load() {
+  try {
+    const data = await fetchStats(state.range);
+    const s = data.summary || {};
+    document.getElementById('stats').innerHTML = statCard('Visitors', s.visitors) + statCard('Page views', s.pageviews) + statCard('Tool starts', s.tool_starts) + statCard('Downloads', s.downloads);
+    const series = data.timeseries || [];
+    const max = Math.max(1, ...series.map((p) => p.value));
+    document.getElementById('spark').innerHTML = series.length ? series.map((p) => '<div class="bar" style="height:' + (p.value / max) * 100 + '%" title="' + p.date + ': ' + p.value + '"></div>').join('') : '<div style="color:var(--text-3);font-size:13px">No traffic yet</div>';
+    fillTable('pages', data.pages, ['path', 'count']);
+    fillTable('refs', data.referrers, ['name', 'count']);
+    const toolsTbody = document.querySelector('#tools tbody');
+    if (!data.tools || !data.tools.length) { toolsTbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-3);padding:24px">No tool usage</td></tr>'; }
+    else { toolsTbody.innerHTML = data.tools.map((t) => '<tr><td>' + escape(t.name) + '</td><td class="num">' + (t.opens || 0) + '</td><td class="num">' + (t.starts || 0) + '</td><td class="num">' + (t.completions || 0) + '</td><td class="num">' + (t.downloads || 0) + '</td></tr>').join(''); }
+  } catch (err) {
+    if (String(err.message).includes('unauthorized')) {
+      sessionStorage.removeItem(TOKEN_KEY);
+      document.getElementById('gate').classList.remove('hidden');
+      document.getElementById('dash').classList.add('hidden');
+    } else { toast('Could not load analytics', 'error'); }
+  }
+}
+document.querySelectorAll('.filter-chip').forEach((chip) => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('.filter-chip').forEach((c) => c.classList.remove('active'));
+    chip.classList.add('active');
+    state.range = +chip.dataset.range;
+    load();
+  });
+});
+document.getElementById('signIn').addEventListener('click', signIn);
+(async () => {
+  if (getTokenFromUrl()) {
+    document.getElementById('gate').classList.add('hidden');
+    document.getElementById('dash').classList.remove('hidden');
+    await load();
+  }
+})();
+</script>
+</body>
+</html>
