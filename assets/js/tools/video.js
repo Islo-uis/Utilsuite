@@ -1,256 +1,374 @@
 import { analytics } from '../analytics.js';
 import { $, icon, toast, download, makeDropZone, fmtBytes } from '../utils.js';
 
-/* ============================================================
-   MP4 → WebM  (restored, browser-based via ffmpeg.wasm)
-   ============================================================ */
-let _ffmpeg = null, _ffmpegUtil = null;
+/* ---------- FFmpeg loader (lazy) ---------- */
+let _ffmpeg = null, _util = null;
+let _ffmpegHandlersBound = false;
 
-async function loadFFmpeg(onLog, onProgress) {
+async function loadFFmpeg(onProgress) {
   if (!_ffmpeg) {
     const [{ FFmpeg }, util] = await Promise.all([
       import('https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/+esm'),
       import('https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/+esm'),
     ]);
     _ffmpeg = new FFmpeg();
-    _ffmpegUtil = util;
+    _util = util;
     const base = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd';
     await _ffmpeg.load({
       coreURL: await util.toBlobURL(base + '/ffmpeg-core.js', 'text/javascript'),
       wasmURL: await util.toBlobURL(base + '/ffmpeg-core.wasm', 'application/wasm'),
     });
-    if (onLog) _ffmpeg.on('log', ({ message }) => onLog(message));
-    if (onProgress) _ffmpeg.on('progress', ({ progress }) => onProgress(progress));
   }
-  return { ffmpeg: _ffmpeg, util: _ffmpegUtil };
+  if (onProgress && !_ffmpegHandlersBound) {
+    _ffmpeg.on('progress', ({ progress }) => window.__vt_onProgress && window.__vt_onProgress(progress));
+    _ffmpegHandlersBound = true;
+  }
+  return { ffmpeg: _ffmpeg, util: _util };
 }
 
+/* ---------- Shared runner ---------- */
+async function runConvert({ root, toolId, file, args, outputName, outputExt, mime, trackDownload }) {
+  const bar = root.querySelector('#vtBar');
+  const pct = root.querySelector('#vtPct');
+  const status = root.querySelector('#vtStatus');
+  const dl = root.querySelector('#vtDownload');
+  bar.style.width = '0%'; pct.textContent = '0%';
+  status.textContent = 'Loading FFmpeg (first run downloads ~30 MB)…';
+  dl.classList.add('hidden'); dl.disabled = true;
+  analytics.trackToolStart(toolId);
+
+  window.__vt_onProgress = (p) => {
+    const v = Math.max(0, Math.min(99, Math.round(p * 100)));
+    bar.style.width = v + '%'; pct.textContent = v + '%';
+  };
+
+  try {
+    const { ffmpeg, util } = await loadFFmpeg(true);
+    const ext = (file.name.split('.').pop() || 'mp4').toLowerCase();
+    const inputName = 'input.' + ext;
+    const outName = 'output.' + outputExt;
+    status.textContent = 'Preparing input…';
+    await ffmpeg.writeFile(inputName, await util.fetchFile(file));
+    status.textContent = 'Encoding (this can take a while)…';
+    const fullArgs = args(inputName, outName);
+    await ffmpeg.exec(fullArgs);
+    status.textContent = 'Reading output…';
+    const data = await ffmpeg.readFile(outName);
+    const blob = new Blob([data.buffer], { type: mime });
+    bar.style.width = '100%'; pct.textContent = '100%';
+    status.textContent = 'Done — ' + fmtBytes(blob.size);
+    dl.classList.remove('hidden'); dl.disabled = false;
+    dl.onclick = () => {
+      download(blob, outputName(file.name));
+      analytics.trackToolDownload(toolId);
+    };
+    analytics.trackToolComplete(toolId);
+    toast('Ready', 'success');
+    await ffmpeg.deleteFile(inputName).catch(() => {});
+    await ffmpeg.deleteFile(outName).catch(() => {});
+  } catch (e) {
+    console.error(e);
+    analytics.trackError(toolId, e);
+    status.textContent = 'Failed';
+    toast('Conversion failed — try a smaller file', 'error');
+  } finally {
+    window.__vt_onProgress = null;
+  }
+}
+
+/* ---------- Base shell ---------- */
+function buildShell(root, { note, title, hint, accept, extraHTML }) {
+  root.innerHTML = `<div class="panel">
+    <div class="format-note">${note || '<b>Browser-based.</b> First run downloads ~30 MB. Runs entirely on your device — expect slow encoding for HD video.'}</div>
+    ${extraHTML || ''}
+    <div id="vtDrop"></div>
+    <div id="vtWorkspace" class="hidden" style="margin-top:20px">
+      <div class="status-row"><span class="label" id="vtStatus">Preparing…</span><span class="pct" id="vtPct">0%</span></div>
+      <div class="progress"><div id="vtBar"></div></div>
+      <div class="actions">
+        <button id="vtDownload" class="btn btn-primary hidden" disabled>${icon('download', 16)} Download</button>
+      </div>
+    </div>
+  </div>`;
+  const drop = makeDropZone({
+    accept, multiple: false, title, hint,
+    onFiles: (files) => root._onFile && root._onFile(files[0]),
+  });
+  root.querySelector('#vtDrop').appendChild(drop);
+}
+
+/* ---------- MP4 → WebM ---------- */
 function renderMp4ToWebm(root, toolId) {
-  root.innerHTML = `
-    <div class="panel">
-      <div class="format-note">
-        <b>Browser-based conversion.</b> Video is processed entirely on your device with WebAssembly. First run downloads ~30 MB. Expect slow conversion for HD clips (a few minutes for a 30-second clip).
-      </div>
-      <div id="vmDrop"></div>
-      <div id="vmWorkspace" class="hidden">
-        <div class="status-row">
-          <span class="label" id="vmStatus">Preparing…</span>
-          <span class="pct" id="vmPct">0%</span>
-        </div>
-        <div class="progress"><div id="vmBar"></div></div>
-        <div class="actions">
-          <button id="vmCancel" class="btn btn-outline">Cancel</button>
-          <button id="vmDownload" class="btn btn-primary hidden" disabled>${icon('download', 16)} Download WebM</button>
-        </div>
-      </div>
-    </div>`;
-  root.querySelector('#vmDrop').appendChild(makeDropZone({
-    accept: 'video/mp4,video/*',
-    multiple: false,
+  buildShell(root, {
     title: 'Drop an MP4 video',
-    hint: 'Converted to WebM locally in your browser',
-    onFiles: ([f]) => run(f),
+    hint: 'Converted to WebM locally',
+    accept: 'video/mp4,video/*',
+  });
+  root._onFile = (file) => {
+    root.querySelector('#vtWorkspace').classList.remove('hidden');
+    runConvert({
+      root, toolId, file,
+      args: (i, o) => ['-i', i, '-c:v', 'libvpx-vp9', '-crf', '32', '-b:v', '0', '-c:a', 'libopus', '-b:a', '96k', o],
+      outputExt: 'webm',
+      mime: 'video/webm',
+      outputName: (n) => n.replace(/\.[^.]+$/, '') + '.webm',
+    });
+  };
+}
+
+/* ---------- WebM → MP4 ---------- */
+function renderWebmToMp4(root, toolId) {
+  buildShell(root, {
+    title: 'Drop a WebM video',
+    hint: 'Converted to MP4 locally',
+    accept: 'video/webm,video/*',
+  });
+  root._onFile = (file) => {
+    root.querySelector('#vtWorkspace').classList.remove('hidden');
+    runConvert({
+      root, toolId, file,
+      args: (i, o) => ['-i', i, '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '26', '-c:a', 'aac', '-b:a', '128k', o],
+      outputExt: 'mp4',
+      mime: 'video/mp4',
+      outputName: (n) => n.replace(/\.[^.]+$/, '') + '.mp4',
+    });
+  };
+}
+
+/* ---------- Video compress ---------- */
+function renderVideoCompress(root, toolId) {
+  buildShell(root, {
+    title: 'Drop a video to compress',
+    hint: 'Reduces bitrate — output is WebM',
+    accept: 'video/*',
+    extraHTML: `<div class="field-group">
+      <div class="field"><label>Quality</label>
+        <select id="vcQ"><option value="28">High quality</option><option value="32" selected>Balanced</option><option value="38">Small file</option></select>
+      </div>
+    </div>`,
+  });
+  root._onFile = (file) => {
+    root.querySelector('#vtWorkspace').classList.remove('hidden');
+    runConvert({
+      root, toolId, file,
+      args: (i, o) => ['-i', i, '-c:v', 'libvpx-vp9', '-crf', root.querySelector('#vcQ').value, '-b:v', '0', '-c:a', 'libopus', o],
+      outputExt: 'webm',
+      mime: 'video/webm',
+      outputName: (n) => n.replace(/\.[^.]+$/, '') + '_compressed.webm',
+    });
+  };
+}
+
+/* ---------- Video → GIF ---------- */
+function renderVideoToGif(root, toolId) {
+  buildShell(root, {
+    title: 'Drop a video',
+    hint: 'Short clips work best — GIFs are large',
+    accept: 'video/*',
+    extraHTML: `<div class="field-group">
+      <div class="field"><label>FPS</label><input type="number" id="vgFps" value="10" min="5" max="30"/></div>
+      <div class="field"><label>Width (px)</label><input type="number" id="vgW" value="480" min="120" max="1280"/></div>
+    </div>`,
+  });
+  root._onFile = (file) => {
+    root.querySelector('#vtWorkspace').classList.remove('hidden');
+    runConvert({
+      root, toolId, file,
+      args: (i, o) => ['-i', i, '-vf', `fps=${root.querySelector('#vgFps').value},scale=${root.querySelector('#vgW').value}:-1:flags=lanczos`, '-loop', '0', o],
+      outputExt: 'gif',
+      mime: 'image/gif',
+      outputName: (n) => n.replace(/\.[^.]+$/, '') + '.gif',
+    });
+  };
+}
+
+/* ---------- Video → MP3 ---------- */
+function renderVideoToMp3(root, toolId) {
+  buildShell(root, {
+    title: 'Drop a video',
+    hint: 'Extracts the audio track as MP3',
+    accept: 'video/*',
+  });
+  root._onFile = (file) => {
+    root.querySelector('#vtWorkspace').classList.remove('hidden');
+    runConvert({
+      root, toolId, file,
+      args: (i, o) => ['-i', i, '-vn', '-c:a', 'libmp3lame', '-b:a', '192k', o],
+      outputExt: 'mp3',
+      mime: 'audio/mpeg',
+      outputName: (n) => n.replace(/\.[^.]+$/, '') + '.mp3',
+    });
+  };
+}
+
+/* ---------- Trim ---------- */
+function renderVideoTrim(root, toolId) {
+  buildShell(root, {
+    title: 'Drop a video to trim',
+    hint: 'Cut by start/end time',
+    accept: 'video/*',
+    extraHTML: `<div class="field-group">
+      <div class="field"><label>Start (seconds)</label><input type="number" id="vtStart" value="0" min="0" step="0.1"/></div>
+      <div class="field"><label>End (seconds)</label><input type="number" id="vtEnd" min="0" step="0.1"/></div>
+    </div>`,
+  });
+  root._onFile = (file) => {
+    root.querySelector('#vtWorkspace').classList.remove('hidden');
+    runConvert({
+      root, toolId, file,
+      args: (i, o) => {
+        const a = ['-i', i];
+        const s = root.querySelector('#vtStart').value;
+        const e = root.querySelector('#vtEnd').value;
+        if (s) a.push('-ss', s);
+        if (e) a.push('-to', e);
+        return a.concat(['-c:v', 'libx264', '-preset', 'ultrafast', '-c:a', 'aac', o]);
+      },
+      outputExt: 'mp4',
+      mime: 'video/mp4',
+      outputName: (n) => n.replace(/\.[^.]+$/, '') + '_trimmed.mp4',
+    });
+  };
+}
+
+/* ---------- Resize ---------- */
+function renderVideoResize(root, toolId) {
+  buildShell(root, {
+    title: 'Drop a video to resize',
+    hint: 'Scale to a target width',
+    accept: 'video/*',
+    extraHTML: `<div class="field-group">
+      <div class="field"><label>Width (px)</label><input type="number" id="vrW" value="720" min="120" max="3840"/></div>
+    </div>`,
+  });
+  root._onFile = (file) => {
+    root.querySelector('#vtWorkspace').classList.remove('hidden');
+    runConvert({
+      root, toolId, file,
+      args: (i, o) => ['-i', i, '-vf', `scale=${root.querySelector('#vrW').value}:-2`, '-c:v', 'libx264', '-preset', 'ultrafast', '-c:a', 'copy', o],
+      outputExt: 'mp4',
+      mime: 'video/mp4',
+      outputName: (n) => n.replace(/\.[^.]+$/, '') + '_resized.mp4',
+    });
+  };
+}
+
+/* ---------- Change FPS ---------- */
+function renderChangeFps(root, toolId) {
+  buildShell(root, {
+    title: 'Drop a video to change frame rate',
+    hint: 'Resamples the video to a new FPS',
+    accept: 'video/*',
+    extraHTML: `<div class="field-group">
+      <div class="field"><label>FPS</label><input type="number" id="vfFps" value="24" min="5" max="120"/></div>
+    </div>`,
+  });
+  root._onFile = (file) => {
+    root.querySelector('#vtWorkspace').classList.remove('hidden');
+    runConvert({
+      root, toolId, file,
+      args: (i, o) => ['-i', i, '-r', root.querySelector('#vfFps').value, '-c:v', 'libx264', '-preset', 'ultrafast', '-c:a', 'copy', o],
+      outputExt: 'mp4',
+      mime: 'video/mp4',
+      outputName: (n) => n.replace(/\.[^.]+$/, '') + '_fps.mp4',
+    });
+  };
+}
+
+/* ---------- Extract frames (no FFmpeg — pure canvas) ---------- */
+function renderExtractFrames(root, toolId) {
+  let video = null;
+  let frames = [];
+
+  root.innerHTML = `<div class="panel">
+    <div class="format-note"><b>Fast:</b> Runs without FFmpeg — pulls frames directly from a video element.</div>
+    <div id="efDrop"></div>
+    <div id="efWorkspace" class="hidden" style="margin-top:20px">
+      <div class="field-group">
+        <div class="field"><label>Frames to extract</label><input type="number" id="efCount" value="10" min="1" max="100"/></div>
+        <button id="efGo" class="btn btn-primary">Extract frames</button>
+        <button id="efZip" class="btn btn-outline hidden" disabled>${icon('archive', 16)} Download ZIP</button>
+      </div>
+      <div id="efGrid" class="thumb-grid"></div>
+    </div>
+  </div>`;
+
+  root.querySelector('#efDrop').appendChild(makeDropZone({
+    accept: 'video/*', multiple: false,
+    title: 'Drop a video',
+    hint: 'Frames are evenly sampled across the clip',
+    onFiles: async ([f]) => {
+      const url = URL.createObjectURL(f);
+      video = document.createElement('video');
+      video.src = url;
+      video.muted = true;
+      video.preload = 'auto';
+      await new Promise((r) => video.addEventListener('loadedmetadata', r, { once: true }));
+      root.querySelector('#efWorkspace').classList.remove('hidden');
+      analytics.trackToolStart(toolId);
+    },
   }));
 
-  let cancelled = false;
-  async function run(file) {
-    cancelled = false;
-    const ws = root.querySelector('#vmWorkspace');
-    const status = root.querySelector('#vmStatus');
-    const bar = root.querySelector('#vmBar');
-    const pct = root.querySelector('#vmPct');
-    const dl = root.querySelector('#vmDownload');
-    ws.classList.remove('hidden');
-    dl.classList.add('hidden'); dl.disabled = true;
-    bar.style.width = '0%'; pct.textContent = '0%';
-    status.textContent = 'Loading FFmpeg (first run may take ~30s)…';
-    analytics.trackToolStart(toolId);
+  root.querySelector('#efGo').addEventListener('click', async () => {
+    if (!video || !video.duration) return toast('Drop a video first', 'error');
+    const n = Math.max(1, Math.min(100, +root.querySelector('#efCount').value));
+    const dur = video.duration;
+    const grid = root.querySelector('#efGrid');
+    grid.innerHTML = '';
+    frames = [];
 
-    try {
-      const { ffmpeg, util } = await loadFFmpeg(
-        () => {},
-        (progress) => {
-          const p = Math.max(0, Math.min(99, Math.round(progress * 100)));
-          bar.style.width = p + '%'; pct.textContent = p + '%';
-        }
-      );
-      status.textContent = 'Writing input file…';
-      const inputName = 'input.mp4';
-      const outputName = 'output.webm';
-      await ffmpeg.writeFile(inputName, await util.fetchFile(file));
-      status.textContent = 'Converting (this may take a while)…';
-      await ffmpeg.exec([
-        '-i', inputName,
-        '-c:v', 'libvpx-vp9', '-crf', '32', '-b:v', '0',
-        '-c:a', 'libopus', '-b:a', '96k',
-        outputName,
-      ]);
-      if (cancelled) { status.textContent = 'Cancelled'; return; }
-      status.textContent = 'Reading output…';
-      const data = await ffmpeg.readFile(outputName);
-      const blob = new Blob([data.buffer], { type: 'video/webm' });
-      bar.style.width = '100%'; pct.textContent = '100%';
-      status.textContent = 'Done — ' + fmtBytes(blob.size);
-      dl.classList.remove('hidden'); dl.disabled = false;
-      dl.onclick = () => {
-        download(blob, file.name.replace(/\.[^.]+$/, '') + '.webm');
-        analytics.trackToolDownload(toolId);
-      };
-      analytics.trackToolComplete(toolId);
-      toast('Converted to WebM', 'success');
-      await ffmpeg.deleteFile(inputName);
-      await ffmpeg.deleteFile(outputName);
-    } catch (err) {
-      console.error(err);
-      analytics.trackError(toolId, err);
-      status.textContent = 'Conversion failed';
-      toast('Conversion failed — see console', 'error');
+    for (let i = 0; i < n; i++) {
+      const t = (dur * i) / n;
+      await seekTo(video, t);
+      const c = document.createElement('canvas');
+      c.width = video.videoWidth;
+      c.height = video.videoHeight;
+      c.getContext('2d').drawImage(video, 0, 0);
+      const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
+      frames.push({ name: `frame-${String(i + 1).padStart(3, '0')}.png`, blob });
+      const url = URL.createObjectURL(blob);
+      const div = document.createElement('div');
+      div.className = 'thumb';
+      div.innerHTML = `<img src="${url}"/><div class="done">${i + 1}</div>`;
+      grid.appendChild(div);
     }
-  }
-  root.querySelector('#vmCancel').addEventListener('click', () => {
-    cancelled = true;
-    toast('Cancelling after next step…');
+    root.querySelector('#efZip').classList.remove('hidden');
+    root.querySelector('#efZip').disabled = false;
+    analytics.trackToolComplete(toolId);
+    toast(`Extracted ${n} frames`, 'success');
+  });
+
+  root.querySelector('#efZip').addEventListener('click', async () => {
+    if (!frames.length) return;
+    const { default: JSZip } = await import('https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm');
+    const zip = new JSZip();
+    frames.forEach((f) => zip.file(f.name, f.blob));
+    const blob = await zip.generateAsync({ type: 'blob' });
+    download(blob, 'video-frames.zip');
+    analytics.trackToolDownload(toolId);
   });
 }
 
-/* ============================================================
-   YouTube Downloader
-   ============================================================
-   HONEST LIMITATION:
-   A static GitHub Pages site CANNOT download YouTube videos.
-   YouTube blocks cross-origin requests from browsers, and any
-   client-only approach (ytdl-core, youtube-dl-js, etc.) either
-   relies on a third-party proxy or is quickly broken by YouTube.
-
-   This tool is intentionally a UI shell + configurable backend
-   endpoint. The user must supply their own backend URL (e.g.
-   a self-hosted cobalt instance or a yt-dlp API wrapper).
-   When no backend is configured, the tool explains the
-   limitation clearly instead of pretending to work.
-   ============================================================ */
-const YT_BACKEND_KEY = 'yt_backend_url';
-
-function renderYoutubeDownloader(root, toolId) {
-  const savedBackend = localStorage.getItem(YT_BACKEND_KEY) || '';
-
-  root.innerHTML = `
-    <div class="panel">
-      <div class="format-note" style="border-left-color:var(--warn);background:#fef3c7;color:#78350f">
-        <b>Heads up:</b> A static site cannot download YouTube videos on its own — YouTube blocks it. This tool connects to <b>your own</b> backend (a cobalt instance, or a small serverless yt-dlp wrapper). If you have no backend, the tool will explain what to do.
-      </div>
-
-      <div class="field-group">
-        <div class="field" style="flex:2">
-          <label>YouTube URL</label>
-          <input type="url" id="ytUrl" placeholder="https://www.youtube.com/watch?v=..." />
-        </div>
-        <button id="ytGo" class="btn btn-primary">${icon('youtube', 16)} Fetch</button>
-      </div>
-
-      <details class="backend-config" ${savedBackend ? '' : 'open'}>
-        <summary>Backend configuration (advanced)</summary>
-        <p class="muted" style="margin:10px 0">
-          Provide the URL of a CORS-enabled endpoint that accepts <code>?url=&lt;video-url&gt;</code>
-          and returns JSON with a direct video URL (e.g. <code>{ "url": "https://..." }</code>).
-          Popular options: self-hosted <a href="https://github.com/imputnet/cobalt" target="_blank" rel="noopener">cobalt</a>
-          instance, or a <a href="https://github.com/yt-dlp/yt-dlp" target="_blank" rel="noopener">yt-dlp</a>-based
-          serverless wrapper. Do <b>not</b> hardcode credentials here.
-        </p>
-        <div class="field-group">
-          <div class="field" style="flex:3">
-            <label>Backend URL</label>
-            <input type="url" id="ytBackend" placeholder="https://your-backend.example.com/resolve" value="${savedBackend}"/>
-          </div>
-          <button id="ytSaveBackend" class="btn btn-outline">Save</button>
-        </div>
-      </details>
-
-      <div id="ytStatus" class="hidden" style="margin-top:20px">
-        <div class="status-row"><span class="label" id="ytStatusText">Fetching…</span></div>
-      </div>
-      <div id="ytResult" class="hidden" style="margin-top:20px"></div>
-    </div>`;
-
-  root.querySelector('#ytSaveBackend').addEventListener('click', () => {
-    const v = root.querySelector('#ytBackend').value.trim();
-    if (v) localStorage.setItem(YT_BACKEND_KEY, v); else localStorage.removeItem(YT_BACKEND_KEY);
-    toast('Backend URL saved');
-  });
-
-  root.querySelector('#ytGo').addEventListener('click', async () => {
-    const url = root.querySelector('#ytUrl').value.trim();
-    const backend = (localStorage.getItem(YT_BACKEND_KEY) || '').trim();
-    const status = root.querySelector('#ytStatus');
-    const statusText = root.querySelector('#ytStatusText');
-    const result = root.querySelector('#ytResult');
-    result.classList.add('hidden');
-
-    if (!url) return toast('Enter a YouTube URL', 'error');
-    if (!/^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)/i.test(url)) {
-      return toast('That doesn\'t look like a YouTube URL', 'error');
-    }
-
-    analytics.trackToolStart(toolId);
-
-    if (!backend) {
-      status.classList.remove('hidden');
-      statusText.textContent = 'No backend configured';
-      result.classList.remove('hidden');
-      result.innerHTML = `
-        <div class="format-note" style="border-left-color:var(--danger);background:#fee2e2;color:#7f1d1d">
-          <b>No backend configured.</b> Open the "Backend configuration" section above and provide a URL. See the note below for why this is required.
-        </div>
-        <p class="muted" style="margin-top:12px;line-height:1.6">
-          GitHub Pages is static — it cannot run a server-side downloader. To make this work you need to deploy a small helper
-          (e.g. a cobalt instance) on a free platform (Cloudflare Workers, Deno Deploy, or any host you already use).
-          Once deployed, paste its URL above and it will work everywhere this page loads.
-        </p>`;
-      return;
-    }
-
-    status.classList.remove('hidden');
-    statusText.textContent = 'Contacting backend…';
-
-    try {
-      const apiUrl = backend + (backend.includes('?') ? '&' : '?') + 'url=' + encodeURIComponent(url);
-      const res = await fetch(apiUrl, { headers: { Accept: 'application/json' } });
-      if (!res.ok) throw new Error('Backend returned ' + res.status);
-      const data = await res.json();
-      const directUrl = data.url || data.download_url || (data.picker && data.picker[0] && data.picker[0].url);
-      if (!directUrl) throw new Error('Backend did not return a video URL');
-
-      statusText.textContent = 'Ready';
-      result.classList.remove('hidden');
-      result.innerHTML = `
-        <div class="video-preview">
-          <video controls src="${directUrl}" style="width:100%;border-radius:12px;background:#000"></video>
-          <div class="actions" style="margin-top:12px">
-            <a class="btn btn-primary" href="${directUrl}" download>${icon('download', 16)} Download</a>
-          </div>
-        </div>`;
-      analytics.trackToolComplete(toolId);
-      toast('Ready', 'success');
-    } catch (err) {
-      console.error(err);
-      analytics.trackError(toolId, err);
-      statusText.textContent = 'Backend request failed';
-      result.classList.remove('hidden');
-      result.innerHTML = `<div class="format-note" style="border-left-color:var(--danger);background:#fee2e2;color:#7f1d1d">
-        <b>Could not reach backend.</b> ${escapeHtmlMsg(err.message)}. Check the URL, CORS headers, and that the endpoint is publicly reachable.
-      </div>`;
-    }
+function seekTo(video, time) {
+  return new Promise((resolve) => {
+    const handler = () => {
+      video.removeEventListener('seeked', handler);
+      resolve();
+    };
+    video.addEventListener('seeked', handler);
+    video.currentTime = time;
   });
 }
-function escapeHtmlMsg(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
 
+/* ---------- Export ---------- */
 export const VIDEO_TOOLS = {
-  'mp4-to-webm':  { name: 'MP4 → WebM',     render: renderMp4ToWebm },
-  'webm-to-mp4':  { name: 'WebM → MP4',     render: renderWebmToMp4 },
-  'compress':     { name: 'Compress',       render: renderVideoCompress },
-  'to-gif':       { name: 'Video → GIF',    render: renderVideoToGif },
-  'to-mp3':       { name: 'Video → MP3',    render: renderVideoToMp3 },
-  'trim':         { name: 'Trim',           render: renderVideoTrim },
-  'resize':       { name: 'Resize',         render: renderVideoResize },
-  'change-fps':   { name: 'Change FPS',     render: renderChangeFps },
-  'extract-frames': { name: 'Extract Frames', render: renderExtractFrames },
+  'mp4-to-webm':    { name: 'MP4 → WebM',      render: renderMp4ToWebm },
+  'webm-to-mp4':    { name: 'WebM → MP4',      render: renderWebmToMp4 },
+  'compress':       { name: 'Compress',        render: renderVideoCompress },
+  'to-gif':         { name: 'Video → GIF',     render: renderVideoToGif },
+  'to-mp3':         { name: 'Video → MP3',     render: renderVideoToMp3 },
+  'trim':           { name: 'Trim',            render: renderVideoTrim },
+  'resize':         { name: 'Resize',          render: renderVideoResize },
+  'change-fps':     { name: 'Change FPS',      render: renderChangeFps },
+  'extract-frames': { name: 'Extract Frames',  render: renderExtractFrames },
 };
