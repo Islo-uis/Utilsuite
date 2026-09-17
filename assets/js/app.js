@@ -1,8 +1,9 @@
-import { analytics } from './analytics.js';
-import { $, $$, icon, escapeHTML } from './utils.js';
 import { IMAGE_TOOLS } from './tools/image.js';
 import { PDF_TOOLS } from './tools/pdf.js';
 import { VIDEO_TOOLS } from './tools/video.js';
+import { URL_TOOLS } from './tools/url.js';
+import { TEXT_TOOLS } from './tools/text.js';
+import { CALC_TOOLS } from './tools/calc.js';
 
 (function initTheme() {
   const saved = localStorage.getItem('theme');

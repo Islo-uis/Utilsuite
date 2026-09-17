@@ -244,6 +244,13 @@ function renderYoutubeDownloader(root, toolId) {
 function escapeHtmlMsg(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
 
 export const VIDEO_TOOLS = {
-  'mp4-to-webm':        { name: 'MP4 → WebM',        render: renderMp4ToWebm },
-  'youtube-downloader': { name: 'YouTube Downloader', render: renderYoutubeDownloader },
+  'mp4-to-webm':  { name: 'MP4 → WebM',     render: renderMp4ToWebm },
+  'webm-to-mp4':  { name: 'WebM → MP4',     render: renderWebmToMp4 },
+  'compress':     { name: 'Compress',       render: renderVideoCompress },
+  'to-gif':       { name: 'Video → GIF',    render: renderVideoToGif },
+  'to-mp3':       { name: 'Video → MP3',    render: renderVideoToMp3 },
+  'trim':         { name: 'Trim',           render: renderVideoTrim },
+  'resize':       { name: 'Resize',         render: renderVideoResize },
+  'change-fps':   { name: 'Change FPS',     render: renderChangeFps },
+  'extract-frames': { name: 'Extract Frames', render: renderExtractFrames },
 };
