@@ -3,16 +3,18 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="description" content="Free browser-based utility tools — background remover, image converter, compressor, resizer, PDF creator, and Instagram grid splitter." />
+<meta name="description" content="Free browser-based utility tools — image, PDF, and video converters. No uploads, no sign-up." />
 <meta name="theme-color" content="#0f172a" />
 <title>Utility Suite — Free Browser Tools</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%230f172a'/><path d='M30 35h40M30 50h30M30 65h20' stroke='white' stroke-width='8' stroke-linecap='round'/></svg>" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.css" />
 <link rel="stylesheet" href="assets/css/style.css" />
 <script data-goatcounter="https://YOURCODE.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
 <div id="toasts" aria-live="polite"></div>
+
 <header class="container site-header">
   <a href="#/" class="logo" aria-label="Utility Suite home">
     <span class="logo-mark" aria-hidden="true">
@@ -21,16 +23,14 @@
     <span>Utility Suite</span>
   </a>
   <div class="header-actions">
-    <div id="authPill" class="auth-pill" title="Google Drive not connected">
-      <span class="dot"></span>
-      <span id="authLabel">Connect Drive</span>
-    </div>
     <button id="themeBtn" class="btn btn-outline btn-icon" aria-label="Toggle theme">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
     </button>
   </div>
 </header>
+
 <main id="main" class="container"></main>
+
 <script type="module" src="assets/js/app.js"></script>
 </body>
 </html>
