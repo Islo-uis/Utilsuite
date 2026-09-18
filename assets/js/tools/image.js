@@ -485,12 +485,163 @@ function renderQRGenerator(root, toolId) {
     analytics.trackToolDownload(toolId);
   });
 }
+/* ============================================================
+   SVG → Image (rasterize)
+   ============================================================ */
+function renderSvgToImage(root, toolId) {
+  let svgFile = null;
+  let svgText = null;
+
+  root.innerHTML = `
+    <div class="panel">
+      <div id="svDrop"></div>
+      <div class="format-note" style="margin-top:16px">
+        <b>Supported:</b> .svg files. Rasterized in your browser at any size — exports PNG, JPEG, or WebP.
+      </div>
+      <div id="svWorkspace" class="hidden">
+        <div class="inv-grid" style="margin-top:16px">
+          <div class="field-row"><label>Width (px)</label><input type="number" id="svW" value="1024" min="16" max="8192"/></div>
+          <div class="field-row"><label>Height (px)</label><input type="number" id="svH" value="1024" min="16" max="8192"/></div>
+          <div class="field-row"><label>Format</label>
+            <select id="svFmt">
+              <option value="image/png" selected>PNG (transparent)</option>
+              <option value="image/jpeg">JPEG</option>
+              <option value="image/webp">WebP</option>
+            </select>
+          </div>
+          <div class="field-row"><label>Background (for JPEG)</label><input type="color" id="svBg" value="#ffffff"/></div>
+          <div class="field-row"><label>&nbsp;</label><label class="checkbox-row"><input type="checkbox" id="svLock" checked/> Lock aspect ratio</label></div>
+        </div>
+        <div class="compare" style="margin-top:20px">
+          <div>
+            <div class="cmp-label">Source</div>
+            <div class="cmp-box checker" id="svPreviewWrap"></div>
+          </div>
+          <div>
+            <div class="cmp-label">Rasterized preview</div>
+            <div class="cmp-box checker"><img id="svRaster" alt="Rasterized"/></div>
+          </div>
+        </div>
+        <div class="actions">
+          <button id="svReset" class="btn btn-outline">Clear</button>
+          <button id="svExport" class="btn btn-primary">${icon('download', 16)} Export</button>
+        </div>
+      </div>
+    </div>`;
+
+  root.querySelector('#svDrop').appendChild(makeDropZone({
+    accept: '.svg,image/svg+xml', multiple: false,
+    title: 'Drop an SVG file',
+    hint: 'Rasterize to PNG, JPEG, or WebP at any resolution',
+    onFiles: ([f]) => load(f),
+  }));
+
+  const svW = root.querySelector('#svW');
+  const svH = root.querySelector('#svH');
+  const lock = root.querySelector('#svLock');
+  let naturalW = 512, naturalH = 512;
+
+  async function load(file) {
+    svgFile = file;
+    svgText = await file.text();
+    const match = /viewBox\s*=\s*["']([^"']+)["']/.exec(svgText);
+    const wm = /\swidth\s*=\s*["'](\d+)/.exec(svgText);
+    const hm = /\sheight\s*=\s*["'](\d+)/.exec(svgText);
+    if (match) {
+      const parts = match[1].split(/\s+/).map(Number);
+      if (parts.length === 4) { naturalW = parts[2]; naturalH = parts[3]; }
+    } else if (wm && hm) { naturalW = +wm[1]; naturalH = +hm[1]; }
+    svW.value = naturalW;
+    svH.value = naturalH;
+
+    root.querySelector('#svWorkspace').classList.remove('hidden');
+    // Render source into preview
+    const prevWrap = root.querySelector('#svPreviewWrap');
+    prevWrap.innerHTML = '';
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      img.style.maxWidth = '100%';
+      img.style.maxHeight = '300px';
+      prevWrap.appendChild(img);
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+    rasterizePreview();
+    analytics.trackToolStart(toolId);
+  }
+
+  async function rasterizeBlob() {
+    const W = Math.max(1, +svW.value);
+    const H = Math.max(1, +svH.value);
+    const fmt = root.querySelector('#svFmt').value;
+    const bg = root.querySelector('#svBg').value;
+
+    // Ensure the SVG has explicit width/height before rasterizing
+    let prepared = svgText;
+    if (!/\swidth\s*=/.test(prepared)) prepared = prepared.replace('<svg', `<svg width="${W}" height="${H}"`);
+    if (!/\sheight\s*=/.test(prepared)) prepared = prepared.replace('<svg', `<svg width="${W}" height="${H}"`);
+
+    const blob = new Blob([prepared], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const cvs = document.createElement('canvas');
+        cvs.width = W; cvs.height = H;
+        const ctx = cvs.getContext('2d');
+        if (fmt === 'image/jpeg') { ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H); }
+        ctx.drawImage(img, 0, 0, W, H);
+        cvs.toBlob((b) => { URL.revokeObjectURL(url); resolve(b); }, fmt, fmt === 'image/png' ? undefined : 0.92);
+      };
+      img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
+      img.src = url;
+    });
+  }
+
+  async function rasterizePreview() {
+    try {
+      const blob = await rasterizeBlob();
+      const url = URL.createObjectURL(blob);
+      root.querySelector('#svRaster').src = url;
+    } catch (e) { console.error(e); }
+  }
+
+  svW.addEventListener('input', () => {
+    if (lock.checked) svH.value = Math.round(+svW.value * (naturalH / naturalW));
+    rasterizePreview();
+  });
+  svH.addEventListener('input', () => {
+    if (lock.checked) svW.value = Math.round(+svH.value * (naturalW / naturalH));
+    rasterizePreview();
+  });
+  root.querySelector('#svFmt').addEventListener('change', rasterizePreview);
+  root.querySelector('#svBg').addEventListener('input', rasterizePreview);
+
+  root.querySelector('#svReset').addEventListener('click', () => {
+    svgFile = null; svgText = null;
+    root.querySelector('#svWorkspace').classList.add('hidden');
+  });
+  root.querySelector('#svExport').addEventListener('click', async () => {
+    if (!svgText) return;
+    const blob = await rasterizeBlob();
+    const fmt = root.querySelector('#svFmt').value;
+    const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }[fmt];
+    const base = svgFile.name.replace(/\.svg$/i, '');
+    download(blob, `${base}_${svW.value}x${svH.value}.${ext}`);
+    analytics.trackToolComplete(toolId);
+    analytics.trackToolDownload(toolId);
+    toast('Exported', 'success');
+  });
+}
 
 export const IMAGE_TOOLS = {
   'background-remover': { name: 'Background Remover',   render: renderBackgroundRemover },
   'compressor':         { name: 'Compressor',           render: renderCompressor },
   'resizer':            { name: 'Resizer',              render: renderResizer },
   'converter':          { name: 'Converter',            render: renderConverter },
+  'svg-to-image':       { name: 'SVG → Image',          render: renderSvgToImage },
   'social-resizer':     { name: 'Social Media Resizer', render: renderSocialResizer },
   'qr-generator':       { name: 'QR Generator',         render: renderQRGenerator },
 };

@@ -5,6 +5,7 @@ import { PDF_TOOLS } from './tools/pdf.js';
 import { VIDEO_TOOLS } from './tools/video.js';
 import { URL_TOOLS } from './tools/url.js';
 import { TEXT_TOOLS } from './tools/text.js';
+import { COLOR_TOOLS } from './tools/color.js';
 import { CALC_TOOLS } from './tools/calc.js';
 import { BUSINESS_TOOLS } from './tools/invoice.js';
 
@@ -26,7 +27,7 @@ const CATEGORIES = [
   {
     id: 'image',
     name: 'Image Tools',
-    desc: 'Background removal, compression, resizing, social-media crops, QR codes, OCR, and more.',
+    desc: 'Background removal, compression, resizing, SVG rasterizing, social crops, QR, OCR.',
     tools: IMAGE_TOOLS,
     visual: `<div class="cat-visual cat-image"><div class="cv-half left"></div><div class="cv-half right"></div><div class="cv-subject"></div></div>`,
   },
@@ -44,58 +45,40 @@ const CATEGORIES = [
     tools: VIDEO_TOOLS,
     visual: `<div class="cat-visual cat-video"><div class="film-strip">${Array.from({ length: 6 }, () => '<div class="film-frame"></div>').join('')}</div></div>`,
   },
-   {
+  {
     id: 'url',
     name: 'URL & Web',
-    desc: 'Encode, decode, build UTM links, generate QR codes, favicons, meta tags, and passwords.',
+    desc: 'Encode, decode, build UTM links, generate favicons, meta tags, and passwords.',
     tools: URL_TOOLS,
-    visual: `<div class="cat-url">
-      <div class="url-chain"><span></span><span></span><span></span></div>
-      <div class="url-globe"></div>
-    </div>`,
+    visual: `<div class="cat-visual cat-url"><div class="url-browser"><div class="url-dots"><span></span><span></span><span></span></div><div class="url-bar long"></div><div class="url-bar short"></div></div><div class="url-globe"></div></div>`,
   },
   {
     id: 'text',
     name: 'Text Tools',
     desc: 'Count, format, convert, sort, deduplicate, and transform text or structured data.',
     tools: TEXT_TOOLS,
-    visual: `<div class="cat-text">
-      <div class="text-line w1"></div>
-      <div class="text-line w2"></div>
-      <div class="text-line w3"></div>
-      <div class="text-line w4"></div>
-      <div class="text-cursor"></div>
-    </div>`,
+    visual: `<div class="cat-visual cat-text"><div class="text-line w1"></div><div class="text-line w2"></div><div class="text-line w3"></div><div class="text-row"><div class="text-line w4"></div><span class="text-cursor"></span></div></div>`,
+  },
+  {
+    id: 'color',
+    name: 'Color Tools',
+    desc: 'Pick colors from images, convert between spaces, generate palettes, check contrast.',
+    tools: COLOR_TOOLS,
+    visual: `<div class="cat-visual cat-color"><div class="color-chip c1"></div><div class="color-chip c2"></div><div class="color-chip c3"></div><div class="color-chip c4"></div></div>`,
   },
   {
     id: 'calc',
     name: 'Calculators',
     desc: 'Everyday calculators — loans, tax, discounts, units, dates, and time zones.',
     tools: CALC_TOOLS,
-    visual: `<div class="cat-calc">
-      <div class="calc-screen">125.00</div>
-      <div class="calc-keys">
-        <span>7</span><span>8</span><span>9</span>
-        <span>4</span><span>5</span><span>6</span>
-        <span>1</span><span>2</span><span>3</span>
-      </div>
-    </div>`,
+    visual: `<div class="cat-visual cat-calc"><div class="calc-screen">125.00</div><div class="calc-keys"><span>7</span><span>8</span><span>9</span><span>4</span><span>5</span><span>6</span><span>1</span><span>2</span><span>3</span></div></div>`,
   },
-    {
+  {
     id: 'business',
     name: 'Business',
     desc: 'Create, track, and export invoices with logos, signatures, and built-in analytics.',
     tools: BUSINESS_TOOLS,
-    visual: `<div class="cat-business">
-      <div class="biz-paper">
-        <div class="biz-line"></div>
-        <div class="biz-line short"></div>
-        <div class="biz-line"></div>
-        <div class="biz-line short"></div>
-        <div class="biz-total">$1,250</div>
-      </div>
-      <div class="biz-stamp">PAID</div>
-    </div>`,
+    visual: `<div class="cat-business"><div class="biz-paper"><div class="biz-line"></div><div class="biz-line short"></div><div class="biz-line"></div><div class="biz-line short"></div><div class="biz-total">$1,250</div></div><div class="biz-stamp">PAID</div></div>`,
   },
 ];
 
@@ -106,7 +89,6 @@ function route() {
   const main = document.querySelector('#main');
   if (!main) return;
 
-  // Home
   if (!catId) {
     analytics.trackPageview('home');
     main.innerHTML = renderHome();
@@ -139,7 +121,7 @@ function route() {
     `<a class="back-link" href="#/">${icon('arrowLeft', 14)} All categories</a>` +
     `<div class="tool-page">` +
       `<div class="tool-header"><h2>${escapeHTML(cat.name)}</h2><p>${escapeHTML(cat.desc)}</p></div>` +
-      `<div class="tool-tabs" role="tablist">` +
+            `<div class="tool-tabs" role="tablist">` +
         Object.keys(cat.tools).map((tid) =>
           `<a class="tool-tab ${tid === activeId ? 'active' : ''}" href="#/${cat.id}/${tid}" role="tab" data-tool="${tid}">${escapeHTML(cat.tools[tid].name)}</a>`
         ).join('') +
@@ -162,7 +144,7 @@ function renderHome() {
   return `
     <section class="hero">
       <h1>Free tools that run in your browser</h1>
-      <p>Over 60 utilities for images, PDFs, video, text, and everyday calculations. No uploads. No sign-up. Everything processes locally on your device.</p>
+      <p>Over 60 utilities for images, PDFs, video, text, color, and everyday calculations. No uploads. No sign-up. Everything processes locally on your device.</p>
     </section>
     <section class="category-grid" aria-label="Tool categories">
       ${CATEGORIES.map((c) => `

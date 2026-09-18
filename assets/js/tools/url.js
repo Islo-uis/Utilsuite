@@ -315,12 +315,11 @@ function renderPasswordGenerator(root, toolId) {
 }
 
 export const URL_TOOLS = {
-  'qr-from-url':    { name: 'QR from URL',       render: renderQrFromUrl },
-  'url-codec':      { name: 'URL Encode/Decode', render: renderUrlEncodeDecode },
-  'base64':         { name: 'Base64',            render: renderBase64 },
-  'html-entities':  { name: 'HTML Entities',     render: renderHtmlEntities },
-  'utm-builder':    { name: 'UTM Builder',       render: renderUtmBuilder },
-  'favicon':        { name: 'Favicon Generator', render: renderFaviconGenerator },
-  'meta-tags':      { name: 'Meta Tag Generator',render: renderMetaTags },
-  'password-gen':   { name: 'Password Generator',render: renderPasswordGenerator },
+  'url-codec':     { name: 'URL Encode/Decode',  render: renderUrlEncodeDecode },
+  'base64':        { name: 'Base64',             render: renderBase64 },
+  'html-entities': { name: 'HTML Entities',      render: renderHtmlEntities },
+  'utm-builder':   { name: 'UTM Builder',        render: renderUtmBuilder },
+  'favicon':       { name: 'Favicon Generator',  render: renderFaviconGenerator },
+  'meta-tags':     { name: 'Meta Tag Generator', render: renderMetaTags },
+  'password-gen':  { name: 'Password Generator', render: renderPasswordGenerator },
 };
