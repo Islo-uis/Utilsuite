@@ -446,16 +446,9 @@ input[type="range"] { width: 100%; accent-color: var(--text); }
 /* ============================================================
    3. VIDEO — film strip
    ============================================================ */
-.cat-video {
-  width: 200px;
-  height: 100px;
-  display: grid;
-  place-items: center;
-}
+.cat-video { width: 170px; height: 86px; }
 .cat-video .film-strip {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 4px;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;
   padding: 14px 10px;
   background: var(--text);
   border-radius: 10px;
@@ -464,19 +457,14 @@ input[type="range"] { width: 100%; accent-color: var(--text); }
 }
 .cat-video .film-strip::before,
 .cat-video .film-strip::after {
-  content: '';
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  height: 5px;
+  content: ''; position: absolute; left: 8px; right: 8px; height: 5px;
   background-image: linear-gradient(to right, var(--bg) 50%, transparent 50%);
   background-size: 10px 100%;
 }
 .cat-video .film-strip::before { top: 4px; }
 .cat-video .film-strip::after  { bottom: 4px; }
 .cat-video .film-frame {
-  width: 44px;
-  height: 44px;
+  width: 44px; height: 44px;
   background: linear-gradient(135deg, #818cf8, #6366f1);
   border-radius: 4px;
 }
@@ -1471,7 +1459,7 @@ input[type="color"] {
 /* ---------- Category visuals (compact versions) ---------- */
 .cat-image { width: 130px; height: 96px; }
 .cat-pdf { width: 76px; height: 94px; }
-.cat-video { width: 170px; height: 86px; }
+.cat-video { width: 132px; height: 78px; }
 .cat-text { width: 150px; }
 .cat-calc { width: 90px; height: 120px; }
 .cat-calc .calc-screen { height: 34px; font-size: 12px; }
