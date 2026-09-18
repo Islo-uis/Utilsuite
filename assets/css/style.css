@@ -446,112 +446,49 @@ input[type="range"] { width: 100%; accent-color: var(--text); }
 /* ============================================================
    3. VIDEO — film strip
    ============================================================ */
-.cat-video { width: 170px; height: 86px; }
+..cat-video {
+  width: 148px;
+  height: 92px;
+  display: grid;
+  place-items: center;
+}
 .cat-video .film-strip {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;
+  display: grid;
+  grid-template-columns: repeat(3, 26px);
+  grid-template-rows: repeat(2, 26px);
+  gap: 4px;
   padding: 14px 10px;
-  background: var(--text);
+  background: linear-gradient(180deg, #1e293b, #0a0a0b);
   border-radius: 10px;
   position: relative;
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.2);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.28);
+  box-sizing: content-box;
 }
 .cat-video .film-strip::before,
 .cat-video .film-strip::after {
-  content: ''; position: absolute; left: 8px; right: 8px; height: 5px;
-  background-image: linear-gradient(to right, var(--bg) 50%, transparent 50%);
-  background-size: 10px 100%;
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  height: 5px;
+  background-image: linear-gradient(to right, #f8fafc 50%, transparent 50%);
+  background-size: 9px 100%;
+  opacity: 0.9;
 }
 .cat-video .film-strip::before { top: 4px; }
 .cat-video .film-strip::after  { bottom: 4px; }
 .cat-video .film-frame {
-  width: 44px; height: 44px;
-  background: linear-gradient(135deg, #818cf8, #6366f1);
+  width: 26px;
+  height: 26px;
   border-radius: 4px;
+  background: linear-gradient(135deg, #818cf8, #6366f1);
 }
+.cat-video .film-frame:nth-child(1) { background: linear-gradient(135deg, #f472b6, #ec4899); }
 .cat-video .film-frame:nth-child(2) { background: linear-gradient(135deg, #c7d2fe, #818cf8); }
-.cat-video .film-frame:nth-child(4) { background: linear-gradient(135deg, #a5b4fc, #6366f1); }
-.cat-video .film-frame:nth-child(5) { background: linear-gradient(135deg, #818cf8, #4f46e5); }
-
-/* ============================================================
-   4. URL — browser window + globe
-   ============================================================ */
-.cat-url {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-.cat-url .url-chain {
-  position: relative;
-  width: 116px;
-  height: 78px;
-  background: var(--surface);
-  border: 1.5px solid var(--border-strong);
-  border-radius: 12px;
-  padding: 12px;
-  display: flex;
-  gap: 5px;
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
-}
-.cat-url .url-chain span {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--border-strong);
-}
-.cat-url .url-chain span:nth-child(1) { background: #ef4444; }
-.cat-url .url-chain span:nth-child(2) { background: #f59e0b; }
-.cat-url .url-chain span:nth-child(3) { background: #10b981; }
-.cat-url .url-chain::before,
-.cat-url .url-chain::after {
-  content: '';
-  position: absolute;
-  left: 12px;
-  height: 9px;
-  border-radius: 5px;
-}
-.cat-url .url-chain::before {
-  top: 34px;
-  right: 12px;
-  background: linear-gradient(90deg, #60a5fa, #3b82f6);
-}
-.cat-url .url-chain::after {
-  top: 52px;
-  right: 44px;
-  background: linear-gradient(90deg, #34d399, #10b981);
-}
-.cat-url .url-globe {
-  width: 60px;
-  height: 60px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #bfdbfe, #3b82f6 75%);
-  border: 2px solid #2563eb;
-  box-shadow:
-    0 8px 20px rgba(59, 130, 246, 0.25),
-    inset -6px -8px 16px rgba(30, 64, 175, 0.35);
-  position: relative;
-  overflow: hidden;
-  flex-shrink: 0;
-}
-.cat-url .url-globe::before {
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: 6%;
-  bottom: 6%;
-  width: 0;
-  border-left: 1.5px solid rgba(255, 255, 255, 0.7);
-  transform: translateX(-50%);
-}
-.cat-url .url-globe::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 6%;
-  right: 6%;
-  height: 0;
-  border-top: 1.5px solid rgba(255, 255, 255, 0.7);
-  transform: translateY(-50%);
-}
+.cat-video .film-frame:nth-child(3) { background: linear-gradient(135deg, #a5b4fc, #6366f1); }
+.cat-video .film-frame:nth-child(4) { background: linear-gradient(135deg, #818cf8, #4f46e5); }
+.cat-video .film-frame:nth-child(5) { background: linear-gradient(135deg, #6366f1, #4338ca); }
+.cat-video .film-frame:nth-child(6) { background: linear-gradient(135deg, #4f46e5, #3730a3); }
 
 /* ============================================================
    5. TEXT — document lines with blinking cursor
@@ -1459,7 +1396,6 @@ input[type="color"] {
 /* ---------- Category visuals (compact versions) ---------- */
 .cat-image { width: 130px; height: 96px; }
 .cat-pdf { width: 76px; height: 94px; }
-.cat-video { width: 132px; height: 78px; }
 .cat-text { width: 150px; }
 .cat-calc { width: 90px; height: 120px; }
 .cat-calc .calc-screen { height: 34px; font-size: 12px; }
