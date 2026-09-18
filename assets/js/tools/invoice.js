@@ -77,7 +77,6 @@ function computeTotals(inv) {
   if (inv.totals.discountType === 'percent') discount = subtotal * ((inv.totals.discountValue || 0) / 100);
   else discount = inv.totals.discountValue || 0;
   const taxable = subtotal - discount;
-  // Recompute tax on discounted base proportionally
   if (discount > 0 && subtotal > 0) taxTotal = taxTotal * (taxable / subtotal);
   const total = taxable + taxTotal + (inv.totals.shipping || 0);
   return { subtotal, discount, taxTotal, shipping: inv.totals.shipping || 0, total };
@@ -88,8 +87,8 @@ function computeTotals(inv) {
    ============================================================ */
 export function renderInvoice(root, toolId) {
   let invoices = loadInvoices();
-  let current = null; // invoice being edited
-  let activeTab = 'editor'; // editor | history | dashboard
+  let current = null;
+  let activeTab = 'editor';
 
   root.innerHTML = layout();
   wire();
@@ -104,8 +103,7 @@ export function renderInvoice(root, toolId) {
           <button class="inv-tab" data-tab="dashboard">Reports</button>
         </div>
         <div class="inv-panel" id="invPanel"></div>
-      </div>
-    `;
+      </div>`;
   }
 
   function wire() {
@@ -125,8 +123,6 @@ export function renderInvoice(root, toolId) {
     const totalPaid = paid.reduce((s, i) => s + computeTotals(i).total, 0);
     const totalOut = outstanding.reduce((s, i) => s + computeTotals(i).total, 0);
     const totalOverdue = overdue.reduce((s, i) => s + computeTotals(i).total, 0);
-
-    // Use most common currency for the labels (from current invoice or first invoice)
     const cur = current?.meta.currency || invoices[0]?.meta.currency || 'USD';
 
     root.querySelector('#invStats').innerHTML = `
@@ -149,16 +145,15 @@ export function renderInvoice(root, toolId) {
         <div class="lbl">Overdue</div>
         <div class="val">${formatMoney(totalOverdue, cur)}</div>
         <div class="sub">${overdue.length} past due</div>
-      </div>
-    `;
+      </div>`;
     root.querySelector('#invCount').textContent = invoices.length;
   }
 
   function renderTab() {
     const panel = root.querySelector('#invPanel');
-    if (activeTab === 'editor') { renderEditor(panel); }
-    else if (activeTab === 'history') { renderHistory(panel); }
-    else { renderReports(panel); }
+    if (activeTab === 'editor') renderEditor(panel);
+    else if (activeTab === 'history') renderHistory(panel);
+    else renderReports(panel);
   }
 
   /* ----------------------------------------------------------
@@ -166,167 +161,253 @@ export function renderInvoice(root, toolId) {
      ---------------------------------------------------------- */
   function renderEditor(panel) {
     if (!current) {
-      const preset = invoices[0]
-        ? { business: invoices[0].business, notes: invoices[0].notes }
-        : null;
+      const preset = invoices[0] ? { business: invoices[0].business, notes: invoices[0].notes } : null;
       current = blankInvoice(invoices, preset);
     }
 
     panel.innerHTML = `
-      <form class="inv-form" id="invForm" autocomplete="off">
-        <!-- Section: Invoice meta -->
-        <section class="inv-section">
-          <h3 class="inv-section-title">Invoice details</h3>
-          <div class="inv-grid">
-            <div class="field-row"><label>Invoice number</label>
-              <input type="text" data-bind="meta.number" value="${escapeHTML(current.meta.number)}"/>
-            </div>
-            <div class="field-row"><label>Status</label>
-              <select data-bind="meta.status">
-                ${STATUSES.map((s) => `<option value="${s}" ${s === current.meta.status ? 'selected' : ''}>${s}</option>`).join('')}
-              </select>
-            </div>
-            <div class="field-row"><label>Currency</label>
-              <select data-bind="meta.currency">
-                ${CURRENCIES.map((c) => `<option value="${c}" ${c === current.meta.currency ? 'selected' : ''}>${c}</option>`).join('')}
-              </select>
-            </div>
-            <div class="field-row"><label>Issue date</label>
-              <input type="date" data-bind="meta.issueDate" value="${current.meta.issueDate}"/>
-            </div>
-            <div class="field-row"><label>Due date</label>
-              <input type="date" data-bind="meta.dueDate" value="${current.meta.dueDate}"/>
-            </div>
-            <div class="field-row"><label>PO number</label>
-              <input type="text" data-bind="meta.poNumber" value="${escapeHTML(current.meta.poNumber)}" placeholder="Optional"/>
-            </div>
-          </div>
-        </section>
+      <form class="inv-editor" id="invForm" autocomplete="off" novalidate>
+        <div class="inv-editor-form">
 
-        <!-- Section: From / Bill To -->
-        <section class="inv-section">
-          <div class="inv-two-col">
-            <div>
-              <h3 class="inv-section-title">From (your business)</h3>
-              <div class="inv-logo-row">
-                ${current.business.logoDataUrl
-                  ? `<img src="${current.business.logoDataUrl}" alt="Logo" class="inv-logo-preview" id="invLogoPreview"/>`
-                  : `<div class="inv-logo-placeholder" id="invLogoPreview">No logo</div>`}
-                <div style="display:flex;flex-direction:column;gap:6px">
-                  <label class="btn btn-outline btn-sm" style="cursor:pointer">
-                    ${icon('upload', 14)} ${current.business.logoDataUrl ? 'Replace' : 'Upload'} logo
-                    <input type="file" id="invLogoUpload" accept="image/*" class="hidden"/>
-                  </label>
-                  ${current.business.logoDataUrl ? `<button type="button" class="btn btn-outline btn-sm" id="invLogoRemove">Remove</button>` : ''}
+          <details class="inv-section" open>
+            <summary>Invoice details</summary>
+            <div class="inv-section-body">
+              <div class="inv-grid">
+                <div class="field-row"><label>Number</label>
+                  <input type="text" data-bind="meta.number" value="${escapeHTML(current.meta.number)}"/>
+                </div>
+                <div class="field-row"><label>Status</label>
+                  <select data-bind="meta.status">
+                    ${STATUSES.map((s) => `<option value="${s}" ${s === current.meta.status ? 'selected' : ''}>${s}</option>`).join('')}
+                  </select>
+                </div>
+                <div class="field-row"><label>Currency</label>
+                  <select data-bind="meta.currency">
+                    ${CURRENCIES.map((c) => `<option value="${c}" ${c === current.meta.currency ? 'selected' : ''}>${c}</option>`).join('')}
+                  </select>
+                </div>
+                <div class="field-row"><label>Issue date</label>
+                  <input type="date" data-bind="meta.issueDate" value="${current.meta.issueDate}"/>
+                </div>
+                <div class="field-row"><label>Due date</label>
+                  <input type="date" data-bind="meta.dueDate" value="${current.meta.dueDate}"/>
+                </div>
+                <div class="field-row"><label>PO number</label>
+                  <input type="text" data-bind="meta.poNumber" value="${escapeHTML(current.meta.poNumber)}" placeholder="Optional"/>
                 </div>
               </div>
-              <div class="field-row"><label>Business name</label><input type="text" data-bind="business.name" value="${escapeHTML(current.business.name)}"/></div>
-              <div class="field-row"><label>Address</label><textarea data-bind="business.address" rows="3">${escapeHTML(current.business.address)}</textarea></div>
-              <div class="inv-grid">
-                <div class="field-row"><label>Email</label><input type="text" data-bind="business.email" value="${escapeHTML(current.business.email)}"/></div>
-                <div class="field-row"><label>Phone</label><input type="text" data-bind="business.phone" value="${escapeHTML(current.business.phone)}"/></div>
-                <div class="field-row"><label>Website</label><input type="text" data-bind="business.website" value="${escapeHTML(current.business.website)}"/></div>
-                <div class="field-row"><label>Tax ID / VAT</label><input type="text" data-bind="business.taxId" value="${escapeHTML(current.business.taxId)}"/></div>
+            </div>
+          </details>
+
+          <details class="inv-section" open>
+            <summary>From &amp; Bill to</summary>
+            <div class="inv-section-body">
+              <div class="inv-two-col">
+                <div>
+                  <div class="inv-logo-row">
+                    ${current.business.logoDataUrl
+                      ? `<img src="${current.business.logoDataUrl}" class="inv-logo-preview" alt="Logo"/>`
+                      : `<div class="inv-logo-placeholder">No logo</div>`}
+                    <div style="display:flex;flex-direction:column;gap:6px">
+                      <label class="btn btn-outline btn-sm" style="cursor:pointer">
+                        ${icon('upload', 14)} ${current.business.logoDataUrl ? 'Replace' : 'Logo'}
+                        <input type="file" id="invLogoUpload" accept="image/*" class="hidden"/>
+                      </label>
+                      ${current.business.logoDataUrl ? `<button type="button" class="btn btn-outline btn-sm" id="invLogoRemove">Remove</button>` : ''}
+                    </div>
+                  </div>
+                  <div class="field-row"><label>Business name</label>
+                    <input type="text" data-bind="business.name" value="${escapeHTML(current.business.name)}"/>
+                  </div>
+                  <div class="field-row" style="margin-top:10px"><label>Address</label>
+                    <textarea data-bind="business.address" rows="2">${escapeHTML(current.business.address)}</textarea>
+                  </div>
+                  <div class="inv-grid" style="margin-top:10px">
+                    <div class="field-row"><label>Email</label><input type="text" data-bind="business.email" value="${escapeHTML(current.business.email)}"/></div>
+                    <div class="field-row"><label>Phone</label><input type="text" data-bind="business.phone" value="${escapeHTML(current.business.phone)}"/></div>
+                    <div class="field-row"><label>Website</label><input type="text" data-bind="business.website" value="${escapeHTML(current.business.website)}"/></div>
+                    <div class="field-row"><label>Tax ID</label><input type="text" data-bind="business.taxId" value="${escapeHTML(current.business.taxId)}"/></div>
+                  </div>
+                </div>
+                <div>
+                  <div class="field-row"><label>Client name</label>
+                    <input type="text" data-bind="client.name" value="${escapeHTML(current.client.name)}"/>
+                  </div>
+                  <div class="field-row" style="margin-top:10px"><label>Address</label>
+                    <textarea data-bind="client.address" rows="2">${escapeHTML(current.client.address)}</textarea>
+                  </div>
+                  <div class="inv-grid" style="margin-top:10px">
+                    <div class="field-row"><label>Email</label><input type="text" data-bind="client.email" value="${escapeHTML(current.client.email)}"/></div>
+                    <div class="field-row"><label>Phone</label><input type="text" data-bind="client.phone" value="${escapeHTML(current.client.phone)}"/></div>
+                  </div>
+                </div>
               </div>
             </div>
-            <div>
-              <h3 class="inv-section-title">Bill to (client)</h3>
-              <div class="field-row"><label>Client name</label><input type="text" data-bind="client.name" value="${escapeHTML(current.client.name)}"/></div>
-              <div class="field-row"><label>Address</label><textarea data-bind="client.address" rows="3">${escapeHTML(current.client.address)}</textarea></div>
-              <div class="inv-grid">
-                <div class="field-row"><label>Email</label><input type="text" data-bind="client.email" value="${escapeHTML(current.client.email)}"/></div>
-                <div class="field-row"><label>Phone</label><input type="text" data-bind="client.phone" value="${escapeHTML(current.client.phone)}"/></div>
+          </details>
+
+          <details class="inv-section" open>
+            <summary>Line items</summary>
+            <div class="inv-section-body">
+              <div class="inv-items-header">
+                <span>Description</span><span>Qty</span><span>Unit</span><span>Tax %</span><span>Total</span><span></span>
               </div>
+              <div id="invItems"></div>
+              <button type="button" class="btn btn-outline btn-sm" id="invAddItem" style="align-self:flex-start;margin-top:8px">+ Add line</button>
             </div>
-          </div>
-        </section>
+          </details>
 
-        <!-- Section: Line items -->
-        <section class="inv-section">
-          <h3 class="inv-section-title">Line items</h3>
-          <div class="inv-items-header">
-            <span>Description</span>
-            <span>Qty</span>
-            <span>Unit price</span>
-            <span>Tax %</span>
-            <span>Line total</span>
-            <span></span>
-          </div>
-          <div id="invItems"></div>
-          <button type="button" class="btn btn-outline btn-sm" id="invAddItem">+ Add line item</button>
-        </section>
-
-        <!-- Section: Totals -->
-        <section class="inv-section">
-          <div class="inv-totals-wrap">
-            <div class="inv-totals-left">
-              <h3 class="inv-section-title">Discount & shipping</h3>
+          <details class="inv-section">
+            <summary>Discount &amp; shipping</summary>
+            <div class="inv-section-body">
               <div class="inv-grid">
-                <div class="field-row"><label>Discount type</label>
+                <div class="field-row"><label>Type</label>
                   <select data-bind="totals.discountType">
                     <option value="flat" ${current.totals.discountType === 'flat' ? 'selected' : ''}>Flat amount</option>
                     <option value="percent" ${current.totals.discountType === 'percent' ? 'selected' : ''}>Percentage</option>
                   </select>
                 </div>
-                <div class="field-row"><label>Discount value</label><input type="number" step="0.01" min="0" data-bind="totals.discountValue" value="${current.totals.discountValue}"/></div>
-                <div class="field-row"><label>Shipping / handling</label><input type="number" step="0.01" min="0" data-bind="totals.shipping" value="${current.totals.shipping}"/></div>
+                <div class="field-row"><label>Value</label><input type="number" step="0.01" min="0" data-bind="totals.discountValue" value="${current.totals.discountValue}"/></div>
+                <div class="field-row"><label>Shipping</label><input type="number" step="0.01" min="0" data-bind="totals.shipping" value="${current.totals.shipping}"/></div>
+              </div>
+              <div class="inv-totals-right" id="invTotals" style="margin-top:12px"></div>
+            </div>
+          </details>
+
+          <details class="inv-section">
+            <summary>Payment terms &amp; notes</summary>
+            <div class="inv-section-body">
+              <div class="field-row"><label>Payment terms</label><input type="text" data-bind="notes.paymentTerms" value="${escapeHTML(current.notes.paymentTerms)}" placeholder="e.g. Net 30"/></div>
+              <div class="field-row"><label>Payment details</label><textarea data-bind="notes.paymentDetails" rows="2" placeholder="Bank / IBAN / PayPal…">${escapeHTML(current.notes.paymentDetails)}</textarea></div>
+              <div class="field-row"><label>Closing note</label><textarea data-bind="notes.notes" rows="2">${escapeHTML(current.notes.notes)}</textarea></div>
+            </div>
+          </details>
+
+          <details class="inv-section">
+            <summary>Signature</summary>
+            <div class="inv-section-body">
+              <div class="inv-two-col">
+                <div>
+                  <p class="muted" style="margin-bottom:8px">Draw your signature.</p>
+                  <canvas id="invSigPad" width="600" height="140" class="inv-sig-pad"></canvas>
+                  <div class="sig-actions" style="margin-top:8px">
+                    <button type="button" class="btn btn-outline btn-sm" id="invSigClear">Clear</button>
+                    <label class="btn btn-outline btn-sm" style="cursor:pointer">
+                      ${icon('upload', 14)} Upload
+                      <input type="file" id="invSigUpload" accept="image/png,image/*" class="hidden"/>
+                    </label>
+                  </div>
+                </div>
+                <div>
+                  <div class="field-row"><label>Label</label><input type="text" data-bind="signature.label" value="${escapeHTML(current.signature.label)}"/></div>
+                  <div class="field-row" style="margin-top:10px"><label>Printed name</label><input type="text" data-bind="signature.showName" value="${escapeHTML(current.signature.showName)}"/></div>
+                </div>
               </div>
             </div>
-            <div class="inv-totals-right" id="invTotals"></div>
-          </div>
-        </section>
+          </details>
 
-        <!-- Section: Notes & payment -->
-        <section class="inv-section">
-          <h3 class="inv-section-title">Payment terms & notes</h3>
-          <div class="inv-grid">
-            <div class="field-row"><label>Payment terms</label><input type="text" data-bind="notes.paymentTerms" value="${escapeHTML(current.notes.paymentTerms)}" placeholder="e.g. Net 30"/></div>
-          </div>
-          <div class="field-row"><label>Payment details (bank / PayPal / etc.)</label><textarea data-bind="notes.paymentDetails" rows="3" placeholder="Bank name, account, routing, IBAN…">${escapeHTML(current.notes.paymentDetails)}</textarea></div>
-          <div class="field-row"><label>Closing note</label><textarea data-bind="notes.notes" rows="2">${escapeHTML(current.notes.notes)}</textarea></div>
-        </section>
+        </div>
 
-        <!-- Section: Signature -->
-        <section class="inv-section">
-          <h3 class="inv-section-title">Authorized signature</h3>
-          <div class="inv-two-col">
-            <div>
-              <p class="muted" style="margin-bottom:10px">Draw your signature below.</p>
-              <canvas id="invSigPad" width="600" height="160" class="inv-sig-pad"></canvas>
-              <div class="sig-actions">
-                <button type="button" class="btn btn-outline btn-sm" id="invSigClear">Clear</button>
-                <label class="btn btn-outline btn-sm" style="cursor:pointer">
-                  ${icon('upload', 14)} Upload PNG
-                  <input type="file" id="invSigUpload" accept="image/png,image/*" class="hidden"/>
-                </label>
-              </div>
-            </div>
-            <div>
-              <div class="field-row"><label>Signature label</label>
-                <input type="text" data-bind="signature.label" value="${escapeHTML(current.signature.label)}"/>
-              </div>
-              <div class="field-row"><label>Printed name (optional)</label>
-                <input type="text" data-bind="signature.showName" value="${escapeHTML(current.signature.showName)}"/>
-              </div>
-              <div id="invSigPreview"></div>
-            </div>
+        <aside class="inv-editor-preview">
+          <div class="inv-preview-header">
+            <span><span class="dot-live"></span>Live preview</span>
           </div>
-        </section>
+          <div class="inv-preview-paper" id="invPreview"></div>
+        </aside>
 
-        <!-- Actions -->
-        <div class="inv-actions">
+        <div class="inv-editor-actions">
           <button type="button" class="btn btn-outline" id="invReset">Reset</button>
-          <button type="button" class="btn btn-outline" id="invSave">${icon('archive', 16)} Save to history</button>
+          <button type="button" class="btn btn-outline" id="invSave">${icon('archive', 16)} Save</button>
           <button type="button" class="btn btn-primary" id="invPdf">${icon('download', 16)} Download PDF</button>
         </div>
-      </form>
-    `;
+      </form>`;
 
     bindForm();
     renderItems();
     renderTotals();
     initSigPad();
-    renderSigPreview();
+    renderLivePreview();
+  }
+
+  /* ----------------------------------------------------------
+     LIVE PREVIEW — mirrors the PDF layout
+     ---------------------------------------------------------- */
+  function renderLivePreview() {
+    const el = root.querySelector('#invPreview');
+    if (!el) return;
+    const inv = current;
+    const t = computeTotals(inv);
+    const cur = inv.meta.currency;
+    const addrLines = (s) => (s || '').split('\n').filter(Boolean).map((l) => `<div>${escapeHTML(l)}</div>`).join('');
+
+    el.innerHTML = `
+      <div class="inv-doc">
+        <div class="inv-doc-head">
+          <div class="inv-doc-logo">${inv.business.logoDataUrl ? `<img src="${inv.business.logoDataUrl}" alt=""/>` : ''}</div>
+          <div class="inv-doc-title">
+            <div class="inv-doc-h1">INVOICE</div>
+            <div class="inv-doc-num">#${escapeHTML(inv.meta.number)}</div>
+          </div>
+        </div>
+
+        <div class="inv-doc-parties">
+          <div>
+            <div class="inv-doc-label">From</div>
+            <div class="inv-doc-party">${inv.business.name ? escapeHTML(inv.business.name) : '<span class="inv-doc-empty">Your business</span>'}</div>
+            <div class="inv-doc-meta">
+              ${addrLines(inv.business.address)}
+              ${inv.business.email ? `<div>${escapeHTML(inv.business.email)}</div>` : ''}
+              ${inv.business.phone ? `<div>${escapeHTML(inv.business.phone)}</div>` : ''}
+              ${inv.business.taxId ? `<div>Tax ID: ${escapeHTML(inv.business.taxId)}</div>` : ''}
+            </div>
+          </div>
+          <div>
+            <div class="inv-doc-label">Bill to</div>
+            <div class="inv-doc-party">${inv.client.name ? escapeHTML(inv.client.name) : '<span class="inv-doc-empty">Client name</span>'}</div>
+            <div class="inv-doc-meta">
+              ${addrLines(inv.client.address)}
+              ${inv.client.email ? `<div>${escapeHTML(inv.client.email)}</div>` : ''}
+              ${inv.client.phone ? `<div>${escapeHTML(inv.client.phone)}</div>` : ''}
+            </div>
+          </div>
+        </div>
+
+        <div class="inv-doc-meta-strip">
+          <div><span>Issue</span><b>${fmtDate(inv.meta.issueDate)}</b></div>
+          <div><span>Due</span><b>${fmtDate(inv.meta.dueDate)}</b></div>
+          <div><span>Status</span><b>${inv.meta.status}</b></div>
+          ${inv.meta.poNumber ? `<div><span>PO</span><b>${escapeHTML(inv.meta.poNumber)}</b></div>` : ''}
+        </div>
+
+        <table class="inv-doc-items">
+          <thead>
+            <tr><th>Description</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Total</th></tr>
+          </thead>
+          <tbody>
+            ${inv.items.map((it) => `
+              <tr>
+                <td>${it.description ? escapeHTML(it.description) : '<span class="inv-doc-empty">—</span>'}</td>
+                <td class="num">${it.quantity}</td>
+                <td class="num">${formatMoney(it.unitPrice, cur)}</td>
+                <td class="num">${formatMoney((it.quantity || 0) * (it.unitPrice || 0), cur)}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+
+        <div class="inv-doc-totals">
+          <div><span>Subtotal</span><b>${formatMoney(t.subtotal, cur)}</b></div>
+          ${t.discount > 0 ? `<div><span>Discount</span><b>−${formatMoney(t.discount, cur)}</b></div>` : ''}
+          ${t.taxTotal > 0 ? `<div><span>Tax</span><b>${formatMoney(t.taxTotal, cur)}</b></div>` : ''}
+          ${t.shipping > 0 ? `<div><span>Shipping</span><b>${formatMoney(t.shipping, cur)}</b></div>` : ''}
+          <div class="grand"><span>Total</span><b>${formatMoney(t.total, cur)}</b></div>
+        </div>
+
+        ${inv.signature.dataUrl ? `
+          <div class="inv-doc-signature">
+            <img src="${inv.signature.dataUrl}" alt="Signature"/>
+            <div class="inv-doc-sigline">${escapeHTML(inv.signature.label || 'Signature')}</div>
+            ${inv.signature.showName ? `<div class="inv-doc-signame">${escapeHTML(inv.signature.showName)}</div>` : ''}
+          </div>` : ''}
+      </div>`;
   }
 
   /* ----------------------------------------------------------
@@ -335,7 +416,6 @@ export function renderInvoice(root, toolId) {
   function bindForm() {
     const form = root.querySelector('#invForm');
 
-    // Two-way bind inputs
     form.querySelectorAll('[data-bind]').forEach((el) => {
       el.addEventListener('input', () => {
         const path = el.dataset.bind.split('.');
@@ -345,6 +425,7 @@ export function renderInvoice(root, toolId) {
         obj[key] = el.type === 'number' ? (parseFloat(el.value) || 0) : el.value;
         current.updatedAt = Date.now();
         if (path[0] === 'meta' || path[0] === 'totals') { renderTotals(); renderStats(); }
+        renderLivePreview();
       });
     });
 
@@ -355,8 +436,8 @@ export function renderInvoice(root, toolId) {
       if (!f) return;
       if (!f.type.startsWith('image/')) return toast('Select an image file', 'error');
       try {
-        const dataUrl = await readAsDataURL(f);
-        current.business.logoDataUrl = dataUrl;
+        current.business.logoDataUrl = await readAsDataURL(f);
+        // Re-render just the logo row + preview
         renderEditor(root.querySelector('#invPanel'));
       } catch { toast('Could not load logo', 'error'); }
     });
@@ -366,13 +447,15 @@ export function renderInvoice(root, toolId) {
       renderEditor(root.querySelector('#invPanel'));
     });
 
-    // Line items
+    // Line items — add
     root.querySelector('#invAddItem').addEventListener('click', () => {
       current.items.push({ id: newId(), description: '', quantity: 1, unitPrice: 0, taxRate: 0 });
-      renderItems(); renderTotals();
+      renderItems();
+      renderTotals();
+      renderLivePreview();
     });
 
-    // Signature
+    // Signature — upload
     const sigInput = root.querySelector('#invSigUpload');
     if (sigInput) sigInput.addEventListener('change', async (e) => {
       const f = e.target.files[0];
@@ -380,16 +463,16 @@ export function renderInvoice(root, toolId) {
       try {
         const dataUrl = await readAsDataURL(f);
         current.signature.dataUrl = dataUrl;
-        renderSigPreview();
-        // Paint onto the pad so the user sees it
         const pad = root.querySelector('#invSigPad');
         const ctx = pad.getContext('2d');
-        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, pad.width, pad.height);
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, pad.width, pad.height);
         const img = new Image();
         img.onload = () => {
           const r = Math.min(pad.width / img.width, pad.height / img.height) * 0.9;
           const w = img.width * r, h = img.height * r;
           ctx.drawImage(img, (pad.width - w) / 2, (pad.height - h) / 2, w, h);
+          renderLivePreview();
         };
         img.src = dataUrl;
       } catch { toast('Could not load signature', 'error'); }
@@ -401,9 +484,7 @@ export function renderInvoice(root, toolId) {
       current = blankInvoice(invoices, null);
       renderEditor(root.querySelector('#invPanel'));
     });
-    root.querySelector('#invSave').addEventListener('click', () => {
-      saveCurrent();
-    });
+    root.querySelector('#invSave').addEventListener('click', () => saveCurrent());
     root.querySelector('#invPdf').addEventListener('click', () => {
       generatePDF(current);
       analytics.trackToolDownload(toolId);
@@ -434,24 +515,26 @@ export function renderInvoice(root, toolId) {
         <input type="number" step="0.01" min="0" max="100" data-item="taxRate" value="${it.taxRate}"/>
         <span class="inv-line-total">${formatMoney((it.quantity || 0) * (it.unitPrice || 0), current.meta.currency)}</span>
         <button type="button" class="inv-item-remove" data-remove="${i}" aria-label="Remove">${icon('x', 12)}</button>
-      </div>
-    `).join('');
+      </div>`).join('');
 
     wrap.querySelectorAll('[data-item]').forEach((el) => el.addEventListener('input', (e) => {
       const row = e.target.closest('.inv-item-row');
       const i = +row.dataset.i;
       const field = e.target.dataset.item;
       current.items[i][field] = field === 'description' ? e.target.value : (parseFloat(e.target.value) || 0);
-      // Update line total inline
-      row.querySelector('.inv-line-total').textContent = formatMoney((current.items[i].quantity || 0) * (current.items[i].unitPrice || 0), current.meta.currency);
+      row.querySelector('.inv-line-total').textContent =
+        formatMoney((current.items[i].quantity || 0) * (current.items[i].unitPrice || 0), current.meta.currency);
       renderTotals();
       renderStats();
+      renderLivePreview();
     }));
 
     wrap.querySelectorAll('[data-remove]').forEach((b) => b.addEventListener('click', () => {
       if (current.items.length === 1) return toast('At least one line item required', 'error');
       current.items.splice(+b.dataset.remove, 1);
-      renderItems(); renderTotals();
+      renderItems();
+      renderTotals();
+      renderLivePreview();
     }));
   }
 
@@ -461,13 +544,14 @@ export function renderInvoice(root, toolId) {
   function renderTotals() {
     const t = computeTotals(current);
     const cur = current.meta.currency;
-    root.querySelector('#invTotals').innerHTML = `
+    const el = root.querySelector('#invTotals');
+    if (!el) return;
+    el.innerHTML = `
       <div class="inv-total-row"><span>Subtotal</span><span>${formatMoney(t.subtotal, cur)}</span></div>
       ${t.discount > 0 ? `<div class="inv-total-row"><span>Discount</span><span>−${formatMoney(t.discount, cur)}</span></div>` : ''}
       ${t.taxTotal > 0 ? `<div class="inv-total-row"><span>Tax</span><span>${formatMoney(t.taxTotal, cur)}</span></div>` : ''}
       ${t.shipping > 0 ? `<div class="inv-total-row"><span>Shipping</span><span>${formatMoney(t.shipping, cur)}</span></div>` : ''}
-      <div class="inv-total-row grand"><span>Total due</span><span>${formatMoney(t.total, cur)}</span></div>
-    `;
+      <div class="inv-total-row grand"><span>Total due</span><span>${formatMoney(t.total, cur)}</span></div>`;
   }
 
   /* ----------------------------------------------------------
@@ -480,7 +564,6 @@ export function renderInvoice(root, toolId) {
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, pad.width, pad.height);
 
-    // If there's already a stored signature, paint it
     if (current.signature.dataUrl) {
       const img = new Image();
       img.onload = () => {
@@ -499,17 +582,22 @@ export function renderInvoice(root, toolId) {
     };
     const start = (e) => { e.preventDefault(); drawing = true; const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); };
     const move = (e) => {
-      if (!drawing) return; e.preventDefault();
+      if (!drawing) return;
+      e.preventDefault();
       const p = pos(e);
-      ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.strokeStyle = '#0f172a';
-      ctx.lineTo(p.x, p.y); ctx.stroke();
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = '#0f172a';
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
     };
     const end = () => {
       if (!drawing) return;
       drawing = false;
       current.signature.dataUrl = pad.toDataURL('image/png');
-      renderSigPreview();
+      renderLivePreview();
     };
+
     pad.addEventListener('mousedown', start);
     pad.addEventListener('mousemove', move);
     window.addEventListener('mouseup', end);
@@ -517,23 +605,13 @@ export function renderInvoice(root, toolId) {
     pad.addEventListener('touchmove', move, { passive: false });
     pad.addEventListener('touchend', end);
 
-    root.querySelector('#invSigClear').addEventListener('click', () => {
+    const clearBtn = root.querySelector('#invSigClear');
+    if (clearBtn) clearBtn.addEventListener('click', () => {
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, pad.width, pad.height);
       current.signature.dataUrl = null;
-      renderSigPreview();
+      renderLivePreview();
     });
-  }
-
-  function renderSigPreview() {
-    const box = root.querySelector('#invSigPreview');
-    if (!box) return;
-    if (!current.signature.dataUrl) {
-      box.innerHTML = `<p class="muted" style="margin-top:8px">No signature yet.</p>`;
-      return;
-    }
-    box.innerHTML = `<p class="muted" style="margin:12px 0 6px">Preview</p>
-      <div class="inv-sig-preview"><img src="${current.signature.dataUrl}" alt="Signature"/></div>`;
   }
 
   /* ----------------------------------------------------------
@@ -543,7 +621,7 @@ export function renderInvoice(root, toolId) {
     if (!invoices.length) {
       panel.innerHTML = `<div class="empty-state">
         <p>No saved invoices yet.</p>
-        <p class="muted" style="margin-top:8px">Create your first invoice and click "Save to history".</p>
+        <p class="muted" style="margin-top:8px">Create your first invoice and click "Save".</p>
       </div>`;
       return;
     }
@@ -565,12 +643,11 @@ export function renderInvoice(root, toolId) {
           </td>
         </tr>`;
     }).join('');
+
     panel.innerHTML = `
       <div class="inv-history-wrap">
         <table class="data-table inv-history">
-          <thead>
-            <tr><th>Number</th><th>Client</th><th>Issued</th><th>Due</th><th>Status</th><th class="num">Total</th><th></th></tr>
-          </thead>
+          <thead><tr><th>Number</th><th>Client</th><th>Issued</th><th>Due</th><th>Status</th><th class="num">Total</th><th></th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>`;
@@ -620,13 +697,13 @@ export function renderInvoice(root, toolId) {
       return;
     }
     const cur = invoices[0].meta.currency;
+
     const byStatus = STATUSES.map((s) => ({
       status: s,
       count: invoices.filter((i) => i.meta.status === s).length,
       total: invoices.filter((i) => i.meta.status === s).reduce((sum, i) => sum + computeTotals(i).total, 0),
     }));
 
-    // Monthly totals (last 12 months)
     const now = new Date();
     const months = [];
     for (let i = 11; i >= 0; i--) {
@@ -640,7 +717,6 @@ export function renderInvoice(root, toolId) {
     }
     const maxMonth = Math.max(1, ...months.map((m) => m.total));
 
-    // Top clients
     const clientMap = {};
     invoices.forEach((inv) => {
       const name = inv.client.name || '(no client)';
@@ -659,8 +735,7 @@ export function renderInvoice(root, toolId) {
               <div class="inv-spark-col" title="${m.key}: ${formatMoney(m.total, cur)}">
                 <div class="inv-spark-bar" style="height:${(m.total / maxMonth) * 100}%"></div>
                 <span class="inv-spark-label">${m.label}</span>
-              </div>
-            `).join('')}
+              </div>`).join('')}
           </div>
         </section>
 
@@ -674,8 +749,7 @@ export function renderInvoice(root, toolId) {
                   <td><span class="inv-status inv-status-${r.status}">${r.status}</span></td>
                   <td class="num">${r.count}</td>
                   <td class="num">${formatMoney(r.total, cur)}</td>
-                </tr>
-              `).join('')}
+                </tr>`).join('')}
             </tbody>
           </table>
         </section>
@@ -689,10 +763,9 @@ export function renderInvoice(root, toolId) {
                   ${topClients.map((c) => `<tr><td>${escapeHTML(c.name)}</td><td class="num">${c.count}</td><td class="num">${formatMoney(c.total, cur)}</td></tr>`).join('')}
                 </tbody>
               </table>`
-            : '<p class="muted">No client data yet.</p>'}
+            : '<p class="muted" style="padding:18px">No client data yet.</p>'}
         </section>
-      </div>
-    `;
+      </div>`;
   }
 
   /* ============================================================
@@ -707,22 +780,20 @@ export function renderInvoice(root, toolId) {
     const cur = inv.meta.currency || 'USD';
     const t = computeTotals(inv);
 
-    // Accent header band
     doc.setFillColor(15, 23, 42);
     doc.rect(0, 0, pw, 6, 'F');
 
     let y = M;
 
-    // ---- Logo + INVOICE heading ----
+    // Logo
     if (inv.business.logoDataUrl) {
       try {
         const fmt = inv.business.logoDataUrl.includes('png') ? 'PNG' : 'JPEG';
         const img = doc.getImageProperties(inv.business.logoDataUrl);
         const maxW = 110, maxH = 60;
         const r = Math.min(maxW / img.width, maxH / img.height);
-        const w = img.width * r, h = img.height * r;
-        doc.addImage(inv.business.logoDataUrl, fmt, M, y, w, h);
-      } catch (e) { /* skip logo if malformed */ }
+        doc.addImage(inv.business.logoDataUrl, fmt, M, y, img.width * r, img.height * r);
+      } catch (e) { /* skip */ }
     }
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(28);
@@ -732,14 +803,11 @@ export function renderInvoice(root, toolId) {
     doc.setFontSize(11);
     doc.setTextColor(100);
     doc.text('#' + inv.meta.number, pw - M, y + 38, { align: 'right' });
-
     y += 70;
 
-    // ---- From / Bill To two columns ----
+    // From / Bill To
     const colW = (pw - M * 2 - 20) / 2;
-    const yStart = y;
 
-    // Left: From
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
     doc.setTextColor(120);
@@ -759,7 +827,6 @@ export function renderInvoice(root, toolId) {
     if (inv.business.taxId) bizLines.push('Tax ID: ' + inv.business.taxId);
     bizLines.forEach((l) => { doc.text(l, M, by); by += 13; });
 
-    // Right: Bill To + meta
     const rx = M + colW + 20;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
@@ -780,7 +847,7 @@ export function renderInvoice(root, toolId) {
 
     y = Math.max(by, cy) + 10;
 
-    // ---- Meta strip: issue date, due date, status, PO ----
+    // Meta strip
     doc.setFillColor(248, 250, 252);
     doc.rect(M, y, pw - M * 2, 34, 'F');
     doc.setFontSize(9);
@@ -799,14 +866,8 @@ export function renderInvoice(root, toolId) {
 
     y += 34 + 20;
 
-    // ---- Items table ----
-    const cols = {
-      desc: M,
-      qty: pw - M - 260,
-      price: pw - M - 180,
-      tax: pw - M - 90,
-      total: pw - M,
-    };
+    // Items table
+    const cols = { desc: M, qty: pw - M - 260, price: pw - M - 180, tax: pw - M - 90, total: pw - M };
     doc.setFillColor(15, 23, 42);
     doc.rect(M, y, pw - M * 2, 22, 'F');
     doc.setFont('helvetica', 'bold');
@@ -826,10 +887,8 @@ export function renderInvoice(root, toolId) {
       const lineTotal = (it.quantity || 0) * (it.unitPrice || 0);
       const descLines = doc.splitTextToSize(it.description || '', cols.qty - cols.desc - 20);
       const rowH = Math.max(20, descLines.length * 13 + 8);
-
       if (alt) { doc.setFillColor(250, 250, 251); doc.rect(M, y, pw - M * 2, rowH, 'F'); }
       alt = !alt;
-
       doc.setTextColor(15, 23, 42);
       doc.text(descLines, cols.desc + 8, y + 14);
       doc.setTextColor(60);
@@ -847,7 +906,7 @@ export function renderInvoice(root, toolId) {
     doc.line(M, y, pw - M, y);
     y += 20;
 
-    // ---- Totals ----
+    // Totals
     const totalX = pw - M;
     const labelX = pw - M - 120;
     doc.setFontSize(10);
@@ -877,8 +936,6 @@ export function renderInvoice(root, toolId) {
       doc.text(formatMoney(t.shipping, cur), totalX, y, { align: 'right' });
       y += 16;
     }
-
-    // Grand total box
     y += 4;
     doc.setFillColor(15, 23, 42);
     doc.rect(labelX - 40, y, pw - M - labelX + 40, 30, 'F');
@@ -890,7 +947,7 @@ export function renderInvoice(root, toolId) {
     doc.text(formatMoney(t.total, cur), totalX - 8, y + 20, { align: 'right' });
     y += 44;
 
-    // ---- Payment terms & notes ----
+    // Notes
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     doc.setTextColor(120);
@@ -921,7 +978,7 @@ export function renderInvoice(root, toolId) {
       y += 10;
     }
 
-    // ---- Signature (bottom-right) ----
+    // Signature
     if (inv.signature.dataUrl) {
       try {
         const img = doc.getImageProperties(inv.signature.dataUrl);
@@ -941,10 +998,10 @@ export function renderInvoice(root, toolId) {
           doc.setFontSize(10);
           doc.text(inv.signature.showName, sx + sigW / 2, ph - M - 24, { align: 'center' });
         }
-      } catch (e) { /* skip signature if malformed */ }
+      } catch (e) { /* skip */ }
     }
 
-    // ---- Page footer ----
+    // Footer
     doc.setFontSize(8);
     doc.setTextColor(150);
     const footer = [inv.business.name, inv.business.email, inv.business.phone].filter(Boolean).join('  •  ');
