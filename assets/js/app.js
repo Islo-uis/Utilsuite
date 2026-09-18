@@ -6,6 +6,7 @@ import { VIDEO_TOOLS } from './tools/video.js';
 import { URL_TOOLS } from './tools/url.js';
 import { TEXT_TOOLS } from './tools/text.js';
 import { CALC_TOOLS } from './tools/calc.js';
+import { BUSINESS_TOOLS } from './tools/invoice.js';
 
 /* ---------- Theme ---------- */
 (function initTheme() {
@@ -78,6 +79,22 @@ const CATEGORIES = [
         <span>4</span><span>5</span><span>6</span>
         <span>1</span><span>2</span><span>3</span>
       </div>
+    </div>`,
+  },
+    {
+    id: 'business',
+    name: 'Business',
+    desc: 'Create, track, and export invoices with logos, signatures, and built-in analytics.',
+    tools: BUSINESS_TOOLS,
+    visual: `<div class="cat-business">
+      <div class="biz-paper">
+        <div class="biz-line"></div>
+        <div class="biz-line short"></div>
+        <div class="biz-line"></div>
+        <div class="biz-line short"></div>
+        <div class="biz-total">$1,250</div>
+      </div>
+      <div class="biz-stamp">PAID</div>
     </div>`,
   },
 ];

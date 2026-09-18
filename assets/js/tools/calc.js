@@ -439,14 +439,13 @@ function renderInvoice(root, toolId) {
 }
 
 export const CALC_TOOLS = {
-  'percentage':  { name: 'Percentage',        render: renderPercentage },
-  'discount':    { name: 'Discount',          render: renderDiscount },
-  'vat':         { name: 'VAT / Tax',         render: renderVat },
-  'loan':        { name: 'Loan',              render: renderLoan },
-  'salary':      { name: 'Salary / Hourly',   render: renderSalary },
-  'unit-conv':   { name: 'Unit Converter',    render: renderUnitConverter },
-  'age':         { name: 'Age',               render: renderAge },
-  'date-diff':   { name: 'Date Difference',   render: renderDateDiff },
-  'timezone':    { name: 'Time Zone',         render: renderTimeZone },
-  'invoice':     { name: 'Invoice / Receipt', render: renderInvoice },
+  'percentage':  { name: 'Percentage',       render: renderPercentage },
+  'discount':    { name: 'Discount',         render: renderDiscount },
+  'vat':         { name: 'VAT / Tax',        render: renderVat },
+  'loan':        { name: 'Loan',             render: renderLoan },
+  'salary':      { name: 'Salary / Hourly',  render: renderSalary },
+  'unit-conv':   { name: 'Unit Converter',   render: renderUnitConverter },
+  'age':         { name: 'Age',              render: renderAge },
+  'date-diff':   { name: 'Date Difference',  render: renderDateDiff },
+  'timezone':    { name: 'Time Zone',        render: renderTimeZone },
 };
