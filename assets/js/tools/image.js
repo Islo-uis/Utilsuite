@@ -11,6 +11,7 @@ function loadCropper() {
   return _cropperPromise;
 }
 
+// Lazy-loaded background removal AI
 let _bgRemover = null;
 function loadBgRemover() {
   if (!_bgRemover) {
@@ -18,6 +19,25 @@ function loadBgRemover() {
       .then((m) => m.removeBackground || (m.default && m.default.removeBackground));
   }
   return _bgRemover;
+}
+
+// Lazy-loaded QRious (UMD — loaded via <script> tag, not ESM import)
+async function loadQRious() {
+  if (window.QRious) return window.QRious;
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[data-qrious]');
+    if (existing) {
+      existing.addEventListener('load', () => window.QRious ? resolve(window.QRious) : reject(new Error('QRious failed')));
+      existing.addEventListener('error', () => reject(new Error('QRious failed to load')));
+      return;
+    }
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js';
+    s.dataset.qrious = '1';
+    s.onload = () => window.QRious ? resolve(window.QRious) : reject(new Error('QRious failed'));
+    s.onerror = () => reject(new Error('QRious failed to load'));
+    document.head.appendChild(s);
+  });
 }
 
 /* ============================================================
@@ -278,7 +298,7 @@ function renderConverter(root, toolId) {
 }
 
 /* ============================================================
-   Social Media Resizer (NEW) — Cropper.js + presets
+   Social Media Resizer — Cropper.js + presets
    ============================================================ */
 const SOCIAL_PRESETS = {
   'facebook-post':      { label: 'Facebook Post',       w: 1200, h: 630  },
@@ -396,10 +416,81 @@ function renderSocialResizer(root, toolId) {
   });
 }
 
+/* ============================================================
+   QR Code Generator
+   ============================================================ */
+function renderQRGenerator(root, toolId) {
+  root.innerHTML = `
+    <div class="panel">
+      <div class="field-row"><label>Content (URL, text, or anything)</label>
+        <textarea id="qrText" placeholder="https://example.com">https://example.com</textarea>
+      </div>
+      <div class="tool-row">
+        <div class="field-row"><label>Size (px)</label><input type="number" id="qrSize" value="400" min="100" max="2000"/></div>
+        <div class="field-row"><label>Foreground</label><input type="color" id="qrFg" value="#0f172a"/></div>
+        <div class="field-row"><label>Background</label><input type="color" id="qrBg" value="#ffffff"/></div>
+      </div>
+      <div style="display:grid;place-items:center;margin:20px 0">
+        <canvas id="qrCanvas" style="max-width:280px"></canvas>
+      </div>
+      <div class="actions">
+        <button id="qrSave" class="btn btn-primary">${icon('download', 16)} Download PNG</button>
+      </div>
+    </div>`;
+
+  let qr = null;
+  let loading = false;
+
+  const update = async () => {
+    const text = root.querySelector('#qrText').value || ' ';
+    const size = +root.querySelector('#qrSize').value;
+    const fg = root.querySelector('#qrFg').value;
+    const bg = root.querySelector('#qrBg').value;
+
+    if (!qr) {
+      if (loading) return;
+      loading = true;
+      try {
+        const QRious = await loadQRious();
+        qr = new QRious({
+          element: root.querySelector('#qrCanvas'),
+          size, value: text, foreground: fg, background: bg,
+        });
+      } catch (e) {
+        console.error(e);
+        toast('QR library failed to load', 'error');
+        loading = false;
+        return;
+      }
+      loading = false;
+    } else {
+      qr.value = text;
+      qr.size = size;
+      qr.foreground = fg;
+      qr.background = bg;
+    }
+    analytics.trackToolStart(toolId);
+  };
+
+  root.querySelectorAll('input, textarea').forEach((el) => el.addEventListener('input', update));
+  update();
+
+  root.querySelector('#qrSave').addEventListener('click', () => {
+    if (!qr) return toast('QR not ready yet', 'error');
+    const a = document.createElement('a');
+    a.href = root.querySelector('#qrCanvas').toDataURL();
+    a.download = 'qr-code.png';
+    a.click();
+    analytics.trackToolComplete(toolId);
+    analytics.trackToolDownload(toolId);
+  });
+}
+
 export const IMAGE_TOOLS = {
-  'background-remover': { name: 'Background Remover', render: renderBackgroundRemover },
-  'compressor':         { name: 'Compressor',         render: renderCompressor },
-  'resizer':            { name: 'Resizer',            render: renderResizer },
-  'converter':          { name: 'Converter',          render: renderConverter },
+  'background-remover': { name: 'Background Remover',   render: renderBackgroundRemover },
+  'compressor':         { name: 'Compressor',           render: renderCompressor },
+  'resizer':            { name: 'Resizer',              render: renderResizer },
+  'converter':          { name: 'Converter',            render: renderConverter },
   'social-resizer':     { name: 'Social Media Resizer', render: renderSocialResizer },
+  'qr-generator':       { name: 'QR Generator',         render: renderQRGenerator },
 };

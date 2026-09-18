@@ -2,32 +2,69 @@ import { analytics } from '../analytics.js';
 import { $, icon, toast, download, escapeHTML } from '../utils.js';
 
 /* ---------- QR from URL (uses same QRious lib as image tool) ---------- */
+/* ---------- QR from URL ---------- */
+async function loadQRious() {
+  if (window.QRious) return window.QRious;
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js';
+    s.onload = () => window.QRious ? resolve(window.QRious) : reject(new Error('QRious failed'));
+    s.onerror = () => reject(new Error('QRious failed to load'));
+    document.head.appendChild(s);
+  });
+}
+
 function renderQrFromUrl(root, toolId) {
   root.innerHTML = `<div class="panel">
     <div class="field-row"><label>URL</label><input type="url" id="qru" placeholder="https://example.com" value="https://"/></div>
-    <div style="display:grid;place-items:center;margin:20px 0"><canvas id="qruCanvas" style="max-width:280px"></canvas></div>
+    <div style="display:grid;place-items:center;margin:20px 0">
+      <canvas id="qruCanvas" style="max-width:280px"></canvas>
+    </div>
     <div class="actions">
       <button id="qruCopy" class="btn btn-outline">Copy URL</button>
       <button id="qruSave" class="btn btn-primary">${icon('download', 16)} Download QR</button>
     </div>
   </div>`;
+
   let qr = null;
-  const update = () => {
+  let loading = false;
+
+  const update = async () => {
     const url = root.querySelector('#qru').value || ' ';
-    if (!qr) qr = new QRious({ element: root.querySelector('#qruCanvas'), size: 400, value: url });
-    else qr.value = url;
+    if (!qr) {
+      if (loading) return;
+      loading = true;
+      try {
+        const QRious = await loadQRious();
+        qr = new QRious({ element: root.querySelector('#qruCanvas'), size: 400, value: url });
+        loading = false;
+      } catch (e) {
+        console.error(e);
+        toast('QR library failed to load', 'error');
+        loading = false;
+        return;
+      }
+    } else {
+      qr.value = url;
+    }
     analytics.trackToolStart(toolId);
   };
+
   root.querySelector('#qru').addEventListener('input', update);
   update();
+
   root.querySelector('#qruCopy').addEventListener('click', () => {
-    navigator.clipboard.writeText(root.querySelector('#qru').value); toast('Copied');
+    navigator.clipboard.writeText(root.querySelector('#qru').value);
+    toast('Copied');
   });
   root.querySelector('#qruSave').addEventListener('click', () => {
+    if (!qr) return toast('QR not ready yet', 'error');
     const a = document.createElement('a');
     a.href = root.querySelector('#qruCanvas').toDataURL();
-    a.download = 'url-qr.png'; a.click();
-    analytics.trackToolComplete(toolId); analytics.trackToolDownload(toolId);
+    a.download = 'url-qr.png';
+    a.click();
+    analytics.trackToolComplete(toolId);
+    analytics.trackToolDownload(toolId);
   });
 }
 
