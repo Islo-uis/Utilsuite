@@ -1683,3 +1683,38 @@ input[type="color"] {
   color: #fcd34d;
   border-color: #d97706;
 }
+
+/* ============================================================
+   Buy Me a Coffee button (footer)
+   ============================================================ */
+.bmc-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 18px;
+  padding: 10px 16px;
+  background: var(--text);
+  color: var(--bg);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  border: 1.5px solid transparent;
+  transition: transform 0.15s var(--ease), box-shadow 0.15s var(--ease);
+  align-self: flex-start;
+}
+.bmc-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.18);
+  text-decoration: none;
+  color: var(--bg);
+}
+.bmc-btn:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+.bmc-btn .bmc-icon {
+  display: grid;
+  place-items: center;
+  color: #fbbf24;
+}
