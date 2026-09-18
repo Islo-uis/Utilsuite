@@ -1665,3 +1665,21 @@ input[type="color"] {
 .ct-check.no { background: #fee2e2; color: #991b1b; }
 .ct-check .lvl { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.8; }
 @media (max-width: 640px) { .ct-results { grid-template-columns: 1fr; } }
+
+/* ============================================================
+   Buy Me a Coffee — header icon
+   ============================================================ */
+.bmc-icon-btn {
+  color: #d97706;
+}
+.bmc-icon-btn:hover {
+  color: #b45309;
+  border-color: #fbbf24;
+}
+[data-theme="dark"] .bmc-icon-btn {
+  color: #fbbf24;
+}
+[data-theme="dark"] .bmc-icon-btn:hover {
+  color: #fcd34d;
+  border-color: #d97706;
+}
