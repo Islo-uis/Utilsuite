@@ -43,26 +43,42 @@ const CATEGORIES = [
     tools: VIDEO_TOOLS,
     visual: `<div class="cat-visual cat-video"><div class="film-strip">${Array.from({ length: 6 }, () => '<div class="film-frame"></div>').join('')}</div></div>`,
   },
-  {
+   {
     id: 'url',
     name: 'URL & Web',
     desc: 'Encode, decode, build UTM links, generate QR codes, favicons, meta tags, and passwords.',
     tools: URL_TOOLS,
-    visual: `<div class="cat-visual cat-url"><div class="url-chain"><span></span><span></span><span></span></div><div class="url-globe"></div></div>`,
+    visual: `<div class="cat-url">
+      <div class="url-chain"><span></span><span></span><span></span></div>
+      <div class="url-globe"></div>
+    </div>`,
   },
   {
     id: 'text',
     name: 'Text Tools',
     desc: 'Count, format, convert, sort, deduplicate, and transform text or structured data.',
     tools: TEXT_TOOLS,
-    visual: `<div class="cat-visual cat-text"><div class="text-line w1"></div><div class="text-line w2"></div><div class="text-line w3"></div><div class="text-line w4"></div></div>`,
+    visual: `<div class="cat-text">
+      <div class="text-line w1"></div>
+      <div class="text-line w2"></div>
+      <div class="text-line w3"></div>
+      <div class="text-line w4"></div>
+      <div class="text-cursor"></div>
+    </div>`,
   },
   {
     id: 'calc',
     name: 'Calculators',
     desc: 'Everyday calculators — loans, tax, discounts, units, dates, and time zones.',
     tools: CALC_TOOLS,
-    visual: `<div class="cat-visual cat-calc"><div class="calc-screen">125.00</div><div class="calc-keys"><span>7</span><span>8</span><span>9</span><span>4</span><span>5</span><span>6</span><span>1</span><span>2</span><span>3</span></div></div>`,
+    visual: `<div class="cat-calc">
+      <div class="calc-screen">125.00</div>
+      <div class="calc-keys">
+        <span>7</span><span>8</span><span>9</span>
+        <span>4</span><span>5</span><span>6</span>
+        <span>1</span><span>2</span><span>3</span>
+      </div>
+    </div>`,
   },
 ];
 
