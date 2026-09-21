@@ -27,51 +27,98 @@ async function loadFFmpeg(onProgress) {
 }
 
 /* ---------- Shared runner ---------- */
-async function runConvert({ root, toolId, file, args, outputName, outputExt, mime, trackDownload }) {
+async function runConvert({ root, toolId, file, args, outputName, outputExt, mime }) {
   const bar = root.querySelector('#vtBar');
   const pct = root.querySelector('#vtPct');
   const status = root.querySelector('#vtStatus');
   const dl = root.querySelector('#vtDownload');
-  bar.style.width = '0%'; pct.textContent = '0%';
+
+  bar.style.width = '0%';
+  pct.textContent = '0%';
   status.textContent = 'Loading FFmpeg (first run downloads ~30 MB)…';
-  dl.classList.add('hidden'); dl.disabled = true;
+  dl.classList.add('hidden');
+  dl.disabled = true;
   analytics.trackToolStart(toolId);
 
   window.__vt_onProgress = (p) => {
     const v = Math.max(0, Math.min(99, Math.round(p * 100)));
-    bar.style.width = v + '%'; pct.textContent = v + '%';
+    bar.style.width = v + '%';
+    pct.textContent = v + '%';
   };
+
+  const heartbeat = setInterval(() => {
+    if (pct.textContent !== '100%' && pct.textContent !== '0%') {
+      status.textContent = 'Encoding… ' + pct.textContent + ' (this can take a while)';
+    }
+  }, 3000);
+
+  let inputMountDir = null;
+  let inputFileName = null;
 
   try {
     const { ffmpeg, util } = await loadFFmpeg(true);
-    const ext = (file.name.split('.').pop() || 'mp4').toLowerCase();
-    const inputName = 'input.' + ext;
-    const outName = 'output.' + outputExt;
-    status.textContent = 'Preparing input…';
-    await ffmpeg.writeFile(inputName, await util.fetchFile(file));
+
+    // ---- Mount the file via WORKERFS (no memory copy) ----
+    inputMountDir = '/input';
+    inputFileName = file.name;
+    const inputPath = `${inputMountDir}/${inputFileName}`;
+
+    status.textContent = 'Mounting file…';
+    await ffmpeg.createDir(inputMountDir);
+    await ffmpeg.mount('WORKERFS', { files: [file] }, inputMountDir);
+
     status.textContent = 'Encoding (this can take a while)…';
-    const fullArgs = args(inputName, outName);
+
+    // Output still goes to MEMFS — but we stream it out in chunks below
+    const outName = 'output.' + outputExt;
+    const fullArgs = args(inputPath, outName);
     await ffmpeg.exec(fullArgs);
+
     status.textContent = 'Reading output…';
-    const data = await ffmpeg.readFile(outName);
-    const blob = new Blob([data.buffer], { type: mime });
-    bar.style.width = '100%'; pct.textContent = '100%';
-    status.textContent = 'Done — ' + fmtBytes(blob.size);
-    dl.classList.remove('hidden'); dl.disabled = false;
+
+    // ---- Stream the output in chunks (avoids a second full copy) ----
+    const chunks = [];
+    const fileStream = await ffmpeg.readFile(outName);
+    // readFile returns a Uint8Array; chunk it manually to avoid huge Blob construction
+    const CHUNK = 4 * 1024 * 1024;
+    for (let i = 0; i < fileStream.length; i += CHUNK) {
+      chunks.push(fileStream.subarray(i, Math.min(i + CHUNK, fileStream.length)));
+    }
+    const blob = new Blob(chunks, { type: mime });
+
+    clearInterval(heartbeat);
+    bar.style.width = '100%';
+    pct.textContent = '100%';
+    status.textContent = 'Done — ' + (blob.size / 1048576).toFixed(1) + ' MB';
+    dl.classList.remove('hidden');
+    dl.disabled = false;
     dl.onclick = () => {
       download(blob, outputName(file.name));
       analytics.trackToolDownload(toolId);
     };
+
     analytics.trackToolComplete(toolId);
     toast('Ready', 'success');
-    await ffmpeg.deleteFile(inputName).catch(() => {});
+
+    // Cleanup
     await ffmpeg.deleteFile(outName).catch(() => {});
   } catch (e) {
+    clearInterval(heartbeat);
     console.error(e);
     analytics.trackError(toolId, e);
     status.textContent = 'Failed';
-    toast('Conversion failed — try a smaller file', 'error');
+    const msg = String((e && e.message) || e);
+    if (msg.toLowerCase().includes('memory') || msg.toLowerCase().includes('abort')) {
+      toast('Out of memory. Try a smaller file or close other tabs.', 'error', 8000);
+    } else {
+      toast('Conversion failed — see console', 'error', 6000);
+    }
   } finally {
+    clearInterval(heartbeat);
+    if (inputMountDir) {
+      try { await ffmpeg.unmount(inputMountDir); } catch {}
+      try { await ffmpeg.deleteDir(inputMountDir); } catch {}
+    }
     window.__vt_onProgress = null;
   }
 }
