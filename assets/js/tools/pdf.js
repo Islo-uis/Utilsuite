@@ -1,5 +1,6 @@
 import { analytics } from '../analytics.js';
 import { $, $$, icon, toast, download, loadImage, fmtBytes, makeDropZone, readAsArrayBuffer, readAsDataURL, readAsText, escapeHTML } from '../utils.js';
+import { createPageSwitcher, rasterizePdfPage, rasterizeImageDataURL, rasterizeTextPage } from './pdfPreview.js';
 
 const loadPdfLib = () => import('https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/+esm');
 // @cantoo/pdf-lib is a fork with real encryption (userPassword/ownerPassword)
@@ -23,18 +24,22 @@ async function loadPdfjs() {
    PDF Creator — expanded input support
    ============================================================ */
 function renderPdfCreator(root, toolId) {
-  let pages = []; // { name, type, src }  type = 'image' | 'text' | 'html' | 'pdf-page-image'
+  let pages = [];   // { id, name, type, src|text|html, thumbnail }
+  let switcher = null;
+  let uid = 0;
 
   root.innerHTML = `
     <div class="panel">
       <div id="pcDrop"></div>
       <div class="format-note">
-        <b>Supported:</b> JPG · PNG · WEBP · GIF · TXT · HTML · DOCX — each becomes a page (or pages) in the PDF.
+        <b>Supported:</b> JPG · PNG · WEBP · GIF · TXT · HTML · DOCX — each becomes a page in the PDF.
       </div>
-      <ul id="pcList" class="page-list"></ul>
-      <div class="actions">
-        <button id="pcClear" class="btn btn-outline hidden">Clear</button>
-        <button id="pcGo" class="btn btn-primary hidden">${icon('file', 16)} Generate PDF</button>
+      <div id="pcWorkspace" class="hidden">
+        <div id="pcSwitcher"></div>
+        <div class="actions">
+          <button type="button" id="pcClear" class="btn btn-outline">Clear all</button>
+          <button type="button" id="pcGo" class="btn btn-primary">${icon('file', 16)} Generate PDF</button>
+        </div>
       </div>
     </div>`;
 
@@ -51,67 +56,101 @@ function renderPdfCreator(root, toolId) {
     try {
       if (file.type.startsWith('image/')) {
         const src = await readAsDataURL(file);
-        pages.push({ name: file.name, type: 'image', src });
+        const thumb = await rasterizeImageDataURL(src);
+        pages.push({ id: 'p' + (++uid), name: file.name, type: 'image', src, thumbnail: thumb });
       } else if (file.type === 'text/plain' || name.endsWith('.txt')) {
         const text = await readAsText(file);
-        pages.push({ name: file.name, type: 'text', text });
+        pages.push({ id: 'p' + (++uid), name: file.name, type: 'text', text, thumbnail: rasterizeTextPage(text) });
       } else if (file.type === 'text/html' || name.endsWith('.html') || name.endsWith('.htm')) {
         const html = await readAsText(file);
-        pages.push({ name: file.name, type: 'html', html });
+        pages.push({ id: 'p' + (++uid), name: file.name, type: 'html', html, thumbnail: null });
+        // Rasterize html thumbnail after the fact (so we don't block on import)
+        queueMicrotask(async () => {
+          try {
+            const thumb = await rasterizeHtml(html);
+            const p = pages.find((x) => x.name === file.name && x.type === 'html' && !x.thumbnail);
+            if (p && thumb) { p.thumbnail = thumb; refresh(); }
+          } catch {}
+        });
       } else if (name.endsWith('.docx')) {
         const mammoth = await import('https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js');
         const lib = mammoth.default || mammoth;
         const buf = await readAsArrayBuffer(file);
         const result = await lib.convertToHtml({ arrayBuffer: buf });
-        pages.push({ name: file.name, type: 'html', html: result.value });
+        pages.push({ id: 'p' + (++uid), name: file.name, type: 'html', html: result.value, thumbnail: null });
+        queueMicrotask(async () => {
+          try {
+            const thumb = await rasterizeHtml(result.value);
+            const p = pages.find((x) => x.name === file.name && x.type === 'html' && !x.thumbnail);
+            if (p && thumb) { p.thumbnail = thumb; refresh(); }
+          } catch {}
+        });
       } else {
         toast('Unsupported: ' + file.name, 'error');
         return;
       }
-      renderList();
+      refresh();
     } catch (err) {
       console.error(err);
       toast('Could not read ' + file.name, 'error');
     }
   }
 
-  function renderList() {
-    const list = root.querySelector('#pcList');
-    list.innerHTML = pages.map((p, i) => `
-      <li class="page-item" data-i="${i}" draggable="true">
-        ${p.type === 'image' ? `<img src="${p.src}" alt=""/>` : `<div class="page-icon">${p.type === 'text' ? 'TXT' : 'HTML'}</div>`}
-        <div class="page-name" title="${escapeHTML(p.name)}">${escapeHTML(p.name)}</div>
-        <button class="rm" data-i="${i}" aria-label="Remove">${icon('x', 10)}</button>
-      </li>`).join('');
-    const has = pages.length > 0;
-    root.querySelector('#pcGo').classList.toggle('hidden', !has);
-    root.querySelector('#pcClear').classList.toggle('hidden', !has);
-    list.querySelectorAll('.rm').forEach((b) => b.addEventListener('click', (e) => {
-      e.stopPropagation();
-      pages.splice(+b.dataset.i, 1); renderList();
-    }));
-    // Simple reorder
-    let dragIdx = null;
-    list.querySelectorAll('.page-item').forEach((li) => {
-      li.addEventListener('dragstart', () => { dragIdx = +li.dataset.i; });
-      li.addEventListener('dragover', (e) => e.preventDefault());
-      li.addEventListener('drop', (e) => {
-        e.preventDefault();
-        const target = +li.dataset.i;
-        if (dragIdx === null || target === dragIdx) return;
-        const [m] = pages.splice(dragIdx, 1); pages.splice(target, 0, m); renderList();
-      });
-    });
+  async function rasterizeHtml(html) {
+    const html2canvas = (await import('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/+esm')).default;
+    const el = document.createElement('div');
+    el.style.cssText = 'position:fixed;left:-99999px;top:0;width:600px;padding:30px;background:#fff;color:#000;font:12px/1.5 -apple-system,sans-serif';
+    el.innerHTML = html;
+    document.body.appendChild(el);
+    try {
+      const canvas = await html2canvas(el, { backgroundColor: '#fff', scale: 0.5 });
+      return canvas.toDataURL('image/jpeg', 0.7);
+    } finally {
+      document.body.removeChild(el);
+    }
   }
 
-  root.querySelector('#pcClear').addEventListener('click', () => { pages = []; renderList(); });
+  function refresh() {
+    const ws = root.querySelector('#pcWorkspace');
+    const wrap = root.querySelector('#pcSwitcher');
+    if (!pages.length) {
+      ws.classList.add('hidden');
+      return;
+    }
+    ws.classList.remove('hidden');
+    if (!switcher) {
+      switcher = createPageSwitcher(wrap, {
+        pages: pages.map((p) => ({ id: p.id, label: p.name, thumbnail: p.thumbnail })),
+        allowDelete: true,
+        onDelete: (id) => { pages = pages.filter((p) => p.id !== id); refresh(); },
+        onChange: (next) => {
+          // Reorder `pages` to match the switcher's order
+          const order = next.map((x) => x.id);
+          pages.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+        },
+      });
+    } else {
+      switcher.setPages(pages.map((p) => ({ id: p.id, label: p.name, thumbnail: p.thumbnail })));
+    }
+  }
+
+  root.querySelector('#pcClear').addEventListener('click', () => {
+    if (!pages.length) return;
+    if (!confirm('Clear all pages?')) return;
+    pages = [];
+    switcher = null;
+    root.querySelector('#pcSwitcher').innerHTML = '';
+    refresh();
+  });
+
   root.querySelector('#pcGo').addEventListener('click', async () => {
     if (!pages.length) return;
     const btn = root.querySelector('#pcGo');
-    btn.disabled = true; btn.textContent = 'Building…';
+    btn.disabled = true;
+    btn.textContent = 'Building…';
     analytics.trackToolStart(toolId);
     try {
-      const { jsPDF } = await loadJsPDF();
+      const { jsPDF } = await import('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/+esm');
       const doc = new jsPDF({ unit: 'pt', format: 'a4' });
       const pw = doc.internal.pageSize.getWidth();
       const ph = doc.internal.pageSize.getHeight();
@@ -139,12 +178,11 @@ function renderPdfCreator(root, toolId) {
             y += 15;
           }
         } else if (p.type === 'html') {
-          // Render HTML offscreen, rasterize to image
+          const html2canvas = (await import('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/+esm')).default;
           const container = document.createElement('div');
           container.style.cssText = 'position:fixed;left:-99999px;top:0;width:794px;padding:40px;background:#fff;color:#000;font:14px/1.5 -apple-system,Segoe UI,sans-serif';
           container.innerHTML = p.html;
           document.body.appendChild(container);
-          const html2canvas = (await import('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/+esm')).default;
           const canvas = await html2canvas(container, { backgroundColor: '#fff', scale: 1.5 });
           document.body.removeChild(container);
           const src = canvas.toDataURL('image/jpeg', 0.9);
@@ -164,7 +202,8 @@ function renderPdfCreator(root, toolId) {
       analytics.trackError(toolId, err);
       toast('Could not build PDF', 'error');
     }
-    btn.disabled = false; btn.innerHTML = icon('file', 16) + ' Generate PDF';
+    btn.disabled = false;
+    btn.innerHTML = icon('file', 16) + ' Generate PDF';
   });
 }
 
@@ -172,75 +211,149 @@ function renderPdfCreator(root, toolId) {
    PDF Merge
    ============================================================ */
 function renderPdfMerge(root, toolId) {
-  let files = [];
+  // Each entry: { id, fileIndex, pageIndexInFile, thumbnail }
+  let entries = [];
+  let files = [];       // { file, arrayBuffer, doc }
+  let switcher = null;
+  let uid = 0;
+
+  const PAGE_THUMB_LIMIT = 300;
+
   root.innerHTML = `
     <div class="panel">
       <div id="pmDrop"></div>
-      <ul id="pmList" class="page-list"></ul>
-      <div class="actions">
-        <button id="pmClear" class="btn btn-outline hidden">Clear</button>
-        <button id="pmGo" class="btn btn-primary hidden">${icon('layers', 16)} Merge PDFs</button>
+      <div class="format-note">
+        <b>All pages are loaded individually.</b> Reorder or remove any page before merging.
+      </div>
+      <div id="pmWorkspace" class="hidden">
+        <div id="pmSwitcher"></div>
+        <div class="actions">
+          <button type="button" id="pmClear" class="btn btn-outline">Clear all</button>
+          <button type="button" id="pmGo" class="btn btn-primary">${icon('layers', 16)} Merge selected</button>
+        </div>
       </div>
     </div>`;
+
   root.querySelector('#pmDrop').appendChild(makeDropZone({
-    accept: '.pdf,application/pdf', multiple: true,
-    title: 'Drop PDF files to merge',
-    hint: 'Order matters — drag to reorder',
-    onFiles: (fs) => {
-      fs.forEach((f) => files.push({ file: f, size: f.size }));
-      renderList();
+    accept: '.pdf,application/pdf',
+    multiple: true,
+    title: 'Drop PDFs to merge',
+    hint: 'Each page becomes an individual entry below',
+    onFiles: async (fs) => {
+      const btn = root.querySelector('#pmGo');
+      if (btn) btn.disabled = true;
+      for (const f of fs) await addPdf(f);
+      if (btn) btn.disabled = false;
     },
   }));
-  function renderList() {
-    const list = root.querySelector('#pmList');
-    list.innerHTML = files.map((f, i) => `
-      <li class="page-item file-row" data-i="${i}" draggable="true">
-        <div class="page-icon">PDF</div>
-        <div class="page-name" title="${escapeHTML(f.file.name)}">${escapeHTML(f.file.name)}<br><span class="muted">${fmtBytes(f.size)}</span></div>
-        <button class="rm" data-i="${i}">${icon('x', 10)}</button>
-      </li>`).join('');
-    const has = files.length >= 1;
-    root.querySelector('#pmGo').classList.toggle('hidden', !has);
-    root.querySelector('#pmClear').classList.toggle('hidden', !has);
-    list.querySelectorAll('.rm').forEach((b) => b.addEventListener('click', (e) => {
-      e.stopPropagation(); files.splice(+b.dataset.i, 1); renderList();
-    }));
-    let dragIdx = null;
-    list.querySelectorAll('.page-item').forEach((li) => {
-      li.addEventListener('dragstart', () => { dragIdx = +li.dataset.i; });
-      li.addEventListener('dragover', (e) => e.preventDefault());
-      li.addEventListener('drop', (e) => {
-        e.preventDefault();
-        const target = +li.dataset.i;
-        if (dragIdx === null || target === dragIdx) return;
-        const [m] = files.splice(dragIdx, 1); files.splice(target, 0, m); renderList();
-      });
-    });
+
+  async function addPdf(file) {
+    try {
+      const buf = await readAsArrayBuffer(file);
+      const pdfjsLib = await loadPdfjs();
+      const doc = await pdfjsLib.getDocument({ data: buf.slice(0) }).promise;
+      files.push({ file, arrayBuffer: buf, doc });
+
+      const fileIdx = files.length - 1;
+      const totalAfter = entries.length + doc.numPages;
+      if (totalAfter > PAGE_THUMB_LIMIT) {
+        toast(`Skipping thumbnails for ${file.name} — page limit reached (${PAGE_THUMB_LIMIT})`, 'error', 6000);
+        return;
+      }
+
+      for (let p = 1; p <= doc.numPages; p++) {
+        let thumb = null;
+        try { thumb = await rasterizePdfPage(doc, p, 0.28); } catch {}
+        entries.push({
+          id: 'm' + (++uid),
+          fileIndex: fileIdx,
+          pageIndexInFile: p - 1,
+          name: `${file.name} · p.${p}`,
+          thumbnail: thumb,
+        });
+      }
+      refresh();
+    } catch (err) {
+      console.error(err);
+      toast('Could not read ' + file.name, 'error');
+    }
   }
-  root.querySelector('#pmClear').addEventListener('click', () => { files = []; renderList(); });
+
+  function refresh() {
+    const ws = root.querySelector('#pmWorkspace');
+    const wrap = root.querySelector('#pmSwitcher');
+    if (!entries.length) {
+      ws.classList.add('hidden');
+      return;
+    }
+    ws.classList.remove('hidden');
+    if (!switcher) {
+      switcher = createPageSwitcher(wrap, {
+        pages: entries.map((e) => ({ id: e.id, label: e.name, thumbnail: e.thumbnail })),
+        allowDelete: true,
+        onDelete: (id) => { entries = entries.filter((e) => e.id !== id); refresh(); },
+        onChange: (next) => {
+          const order = next.map((x) => x.id);
+          entries.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+        },
+      });
+    } else {
+      switcher.setPages(entries.map((e) => ({ id: e.id, label: e.name, thumbnail: e.thumbnail })));
+    }
+  }
+
+  root.querySelector('#pmClear').addEventListener('click', () => {
+    if (!entries.length) return;
+    if (!confirm('Clear all pages?')) return;
+    entries = [];
+    files = [];
+    switcher = null;
+    root.querySelector('#pmSwitcher').innerHTML = '';
+    refresh();
+  });
+
   root.querySelector('#pmGo').addEventListener('click', async () => {
-    if (files.length < 1) return;
+    if (!entries.length) return;
     const btn = root.querySelector('#pmGo');
-    btn.disabled = true; btn.textContent = 'Merging…';
+    btn.disabled = true;
+    btn.textContent = 'Merging…';
     analytics.trackToolStart(toolId);
     try {
       const { PDFDocument } = await loadPdfLib();
       const out = await PDFDocument.create();
-      for (const f of files) {
-        const buf = await readAsArrayBuffer(f.file);
-        const src = await PDFDocument.load(buf, { ignoreEncryption: true });
-        const pages = await out.copyPages(src, src.getPageIndices());
-        pages.forEach((p) => out.addPage(p));
+
+      // Group by source file to reduce PDFDocument.load calls
+      const byFile = new Map();
+      for (const e of entries) {
+        if (!byFile.has(e.fileIndex)) byFile.set(e.fileIndex, []);
+        byFile.get(e.fileIndex).push(e.pageIndexInFile);
       }
+
+      // Load each source once
+      const sources = new Map();
+      for (const [fileIdx] of byFile) {
+        const src = await PDFDocument.load(files[fileIdx].arrayBuffer, { ignoreEncryption: true });
+        sources.set(fileIdx, src);
+      }
+
+      // Copy pages in the user-specified order
+      for (const e of entries) {
+        const [copied] = await out.copyPages(sources.get(e.fileIndex), [e.pageIndexInFile]);
+        out.addPage(copied);
+      }
+
       const bytes = await out.save();
       download(new Blob([bytes], { type: 'application/pdf' }), 'merged.pdf');
       analytics.trackToolComplete(toolId);
       analytics.trackToolDownload(toolId);
-      toast('Merged', 'success');
+      toast(`Merged ${entries.length} pages`, 'success');
     } catch (err) {
-      console.error(err); analytics.trackError(toolId, err); toast('Merge failed', 'error');
+      console.error(err);
+      analytics.trackError(toolId, err);
+      toast('Merge failed', 'error');
     }
-    btn.disabled = false; btn.innerHTML = icon('layers', 16) + ' Merge PDFs';
+    btn.disabled = false;
+    btn.innerHTML = icon('layers', 16) + ' Merge selected';
   });
 }
 
@@ -248,76 +361,145 @@ function renderPdfMerge(root, toolId) {
    PDF Split
    ============================================================ */
 function renderPdfSplit(root, toolId) {
-  let pdfFile = null, totalPages = 0;
+  let pdfFile = null;
+  let pdfDoc = null;
+  let pages = [];         // { id, pageNum, thumbnail }
+  let selectedIds = new Set();
+  let switcher = null;
+
   root.innerHTML = `
     <div class="panel">
       <div id="psDrop"></div>
       <div id="psWorkspace" class="hidden">
-        <div class="format-note"><b id="psInfo"></b></div>
-        <div class="field-group">
-          <div class="field">
-            <label>Pages (e.g. 1,3,5-7)</label>
-            <input type="text" id="psPages" placeholder="Leave blank to split every page"/>
-          </div>
+        <div class="format-note">
+          <b>Click thumbnails to select pages.</b> The selected pages will be extracted into a new PDF.
+          Leave nothing selected to split every page into separate files.
+        </div>
+        <div id="psSwitcher"></div>
+        <div class="field-group" style="margin-top:16px">
           <label class="checkbox-row"><input type="checkbox" id="psEvery"/> Split every page individually</label>
-          <button id="psGo" class="btn btn-primary">${icon('scissors', 16)} Split</button>
+          <button type="button" id="psSelectAll" class="btn btn-outline btn-sm">Select all</button>
+          <button type="button" id="psSelectNone" class="btn btn-outline btn-sm">Clear selection</button>
+        </div>
+        <div class="actions">
+          <button type="button" id="psReset" class="btn btn-outline">Reset</button>
+          <button type="button" id="psGo" class="btn btn-primary">${icon('scissors', 16)} Split</button>
         </div>
         <div id="psResults" class="split-results"></div>
       </div>
     </div>`;
+
   root.querySelector('#psDrop').appendChild(makeDropZone({
-    accept: '.pdf,application/pdf', multiple: false,
+    accept: '.pdf,application/pdf',
+    multiple: false,
     title: 'Drop a PDF to split',
-    hint: 'Split by range or into single-page files',
+    hint: 'Preview every page and pick which to extract',
     onFiles: ([f]) => load(f),
   }));
+
   async function load(file) {
     pdfFile = file;
-    const buf = await readAsArrayBuffer(file);
-    const { PDFDocument } = await loadPdfLib();
-    const pdf = await PDFDocument.load(buf, { ignoreEncryption: true });
-    totalPages = pdf.getPageCount();
+    const pdfjsLib = await loadPdfjs();
+    pdfDoc = await pdfjsLib.getDocument({ data: await readAsArrayBuffer(file) }).promise;
     root.querySelector('#psWorkspace').classList.remove('hidden');
-    root.querySelector('#psInfo').textContent = file.name + ' — ' + totalPages + ' pages';
-  }
-  root.querySelector('#psGo').addEventListener('click', async () => {
-    if (!pdfFile) return;
-    const every = root.querySelector('#psEvery').checked;
-    const rangeStr = root.querySelector('#psPages').value.trim();
-    const btn = root.querySelector('#psGo');
-    btn.disabled = true; btn.textContent = 'Splitting…';
+    root.querySelector('#psResults').innerHTML = '';
+    selectedIds = new Set();
+
+    pages = [];
+    for (let i = 1; i <= pdfDoc.numPages; i++) {
+      let thumb = null;
+      try { thumb = await rasterizePdfPage(pdfDoc, i, 0.28); } catch {}
+      pages.push({ id: 'sp' + i, pageNum: i, thumbnail: thumb });
+    }
+
+    if (switcher) switcher = null;
+    root.querySelector('#psSwitcher').innerHTML = '';
+    switcher = createPageSwitcher(root.querySelector('#psSwitcher'), {
+      pages: pages.map((p) => ({ id: p.id, label: 'Page ' + p.pageNum, thumbnail: p.thumbnail })),
+      selectable: true,
+      selectedIds: [],
+      onSelectionChange: (ids) => {
+        selectedIds = new Set(ids);
+      },
+    });
     analytics.trackToolStart(toolId);
+  }
+
+  root.querySelector('#psSelectAll').addEventListener('click', () => {
+    selectedIds = new Set(pages.map((p) => p.id));
+    switcher.setSelection([...selectedIds]);
+  });
+  root.querySelector('#psSelectNone').addEventListener('click', () => {
+    selectedIds = new Set();
+    switcher.setSelection([]);
+  });
+
+  root.querySelector('#psReset').addEventListener('click', () => {
+    pdfFile = null;
+    pdfDoc = null;
+    pages = [];
+    selectedIds = new Set();
+    switcher = null;
+    root.querySelector('#psSwitcher').innerHTML = '';
+    root.querySelector('#psWorkspace').classList.add('hidden');
+    root.querySelector('#psResults').innerHTML = '';
+  });
+
+  root.querySelector('#psGo').addEventListener('click', async () => {
+    if (!pdfDoc) return;
+    const every = root.querySelector('#psEvery').checked;
+    const btn = root.querySelector('#psGo');
+    btn.disabled = true;
+    btn.textContent = 'Splitting…';
+    analytics.trackToolStart(toolId);
+
     try {
       const { PDFDocument } = await loadPdfLib();
-      const buf = await readAsArrayBuffer(pdfFile);
-      const src = await PDFDocument.load(buf, { ignoreEncryption: true });
+      const src = await PDFDocument.load(await readAsArrayBuffer(pdfFile), { ignoreEncryption: true });
       const results = [];
 
-      if (every || !rangeStr) {
-        for (let i = 0; i < totalPages; i++) {
+      if (every) {
+        for (let i = 0; i < pdfDoc.numPages; i++) {
           const out = await PDFDocument.create();
           const [p] = await out.copyPages(src, [i]);
           out.addPage(p);
           const bytes = await out.save();
-          results.push({ name: `page-${String(i + 1).padStart(3, '0')}.pdf`, blob: new Blob([bytes], { type: 'application/pdf' }) });
+          results.push({
+            name: `page-${String(i + 1).padStart(3, '0')}.pdf`,
+            blob: new Blob([bytes], { type: 'application/pdf' }),
+          });
         }
-      } else {
-        const indices = parseRanges(rangeStr, totalPages);
-        if (!indices.length) throw new Error('No valid pages');
+      } else if (selectedIds.size > 0) {
+        const indices = pages
+          .filter((p) => selectedIds.has(p.id))
+          .map((p) => p.pageNum - 1);
         const out = await PDFDocument.create();
-        const pages = await out.copyPages(src, indices);
-        pages.forEach((p) => out.addPage(p));
+        const copied = await out.copyPages(src, indices);
+        copied.forEach((p) => out.addPage(p));
         const bytes = await out.save();
-        results.push({ name: 'split.pdf', blob: new Blob([bytes], { type: 'application/pdf' }) });
+        results.push({
+          name: 'extracted.pdf',
+          blob: new Blob([bytes], { type: 'application/pdf' }),
+        });
+      } else {
+        toast('Select pages or enable "Split every page"', 'error');
+        btn.disabled = false;
+        btn.innerHTML = icon('scissors', 16) + ' Split';
+        return;
       }
+
       renderResults(results);
       analytics.trackToolComplete(toolId);
       toast('Split into ' + results.length + ' file(s)', 'success');
     } catch (err) {
-      console.error(err); analytics.trackError(toolId, err); toast('Split failed', 'error');
+      console.error(err);
+      analytics.trackError(toolId, err);
+      toast('Split failed', 'error');
     }
-    btn.disabled = false; btn.innerHTML = icon('scissors', 16) + ' Split';
+    btn.disabled = false;
+    btn.innerHTML = icon('scissors', 16) + ' Split';
   });
+
   function renderResults(results) {
     const box = root.querySelector('#psResults');
     box.innerHTML = results.map((r) => `
@@ -325,10 +507,16 @@ function renderPdfSplit(root, toolId) {
         <span class="split-name">${escapeHTML(r.name)}</span>
         <span class="muted">${fmtBytes(r.blob.size)}</span>
         <button class="btn btn-outline btn-sm" data-name="${escapeHTML(r.name)}">${icon('download', 14)} Download</button>
-      </div>`).join('') + (results.length > 1 ? `<div style="margin-top:12px"><button id="psZip" class="btn btn-outline">${icon('archive', 14)} Download all as ZIP</button></div>` : '');
+      </div>`).join('')
+      + (results.length > 1
+        ? `<div style="margin-top:12px"><button id="psZip" class="btn btn-outline">${icon('archive', 14)} Download all as ZIP</button></div>`
+        : '');
     box.querySelectorAll('button[data-name]').forEach((b) => b.addEventListener('click', () => {
       const r = results.find((x) => x.name === b.dataset.name);
-      if (r) { download(r.blob, r.name); analytics.trackToolDownload(toolId); }
+      if (r) {
+        download(r.blob, r.name);
+        analytics.trackToolDownload(toolId);
+      }
     }));
     const zbtn = box.querySelector('#psZip');
     if (zbtn) zbtn.addEventListener('click', async () => {
@@ -336,7 +524,8 @@ function renderPdfSplit(root, toolId) {
       const zip = new JSZip();
       results.forEach((r) => zip.file(r.name, r.blob));
       const blob = await zip.generateAsync({ type: 'blob' });
-      download(blob, 'split.zip'); analytics.trackToolDownload(toolId);
+      download(blob, 'split.zip');
+      analytics.trackToolDownload(toolId);
     });
   }
 }
