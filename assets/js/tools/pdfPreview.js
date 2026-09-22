@@ -27,16 +27,8 @@ export function createPageSwitcher(container, opts = {}) {
   const selectable = !!opts.selectable;
   const allowDelete = !!opts.allowDelete;
 
-  container.innerHTML = `
+    container.innerHTML = `
     <div class="ps-shell">
-      <div class="ps-viewer">
-        <div class="ps-viewer-inner" id="psViewer"></div>
-        <div class="ps-viewer-nav">
-          <button type="button" class="btn btn-outline btn-sm" id="psPrev" aria-label="Previous page">←</button>
-          <span class="ps-page-counter" id="psCounter">0 / 0</span>
-          <button type="button" class="btn btn-outline btn-sm" id="psNext" aria-label="Next page">→</button>
-        </div>
-      </div>
       <div class="ps-strip-wrap">
         <div class="ps-strip" id="psStrip" role="list"></div>
         <p class="ps-hint">${
@@ -46,6 +38,14 @@ export function createPageSwitcher(container, opts = {}) {
             allowDelete ? 'Hover to remove' : null,
           ].filter(Boolean).join(' · ')
         }</p>
+      </div>
+      <div class="ps-viewer">
+        <div class="ps-viewer-inner" id="psViewer"></div>
+        <div class="ps-viewer-nav">
+          <button type="button" class="btn btn-outline btn-sm" id="psPrev" aria-label="Previous page">←</button>
+          <span class="ps-page-counter" id="psCounter">0 / 0</span>
+          <button type="button" class="btn btn-outline btn-sm" id="psNext" aria-label="Next page">→</button>
+        </div>
       </div>
     </div>`;
 
