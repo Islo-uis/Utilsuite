@@ -4,8 +4,8 @@ import { escapeHTML } from '../utils.js';
    createPageSwitcher
    ------------------------------------------------------------
    Renders a two-pane widget:
-   - Left: reorder grid of thumbnails (dominant)
-   - Right: preview of the currently-selected page (smaller)
+   - Left: reorder grid of thumbnails (dominant, 2/3)
+   - Right: preview of the currently-selected page (smaller, 1/3)
 
    Options:
      pages              [{ id, label, thumbnail }]
