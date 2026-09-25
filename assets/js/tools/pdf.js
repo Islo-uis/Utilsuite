@@ -1,6 +1,50 @@
 import { analytics } from '../analytics.js';
-import { icon, toast, download, fmtBytes, makeDropZone, readAsArrayBuffer, readAsDataURL, readAsText, escapeHTML } from '../utils.js';
-import { createPageSwitcher, rasterizePdfPage, rasterizeImageDataURL, rasterizeTextPage } from './pdfPreview.js';
+import { icon, toast, download, fmtBytes, makeDropZone, readAsArrayBuffer, readAsText, escapeHTML } from '../utils.js';
+import { createPageSwitcher, rasterizePdfPage, rasterizeTextPage } from './pdfPreview.js';
+
+/* ============================================================
+   Inline helpers — bypass utils/pdfPreview dependencies so the
+   Creator can't be blocked by imports that go missing
+   ============================================================ */
+function readFileAsDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = (e) => resolve(e.target.result);
+    r.onerror = () => reject(new Error('FileReader error'));
+    r.onabort = () => reject(new Error('FileReader aborted'));
+    r.readAsDataURL(file);
+  });
+}
+
+function makeThumbnail(dataURL, maxW = 300) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const scale = Math.min(1, maxW / img.naturalWidth);
+        const cvs = document.createElement('canvas');
+        cvs.width = Math.max(1, Math.floor(img.naturalWidth * scale));
+        cvs.height = Math.max(1, Math.floor(img.naturalHeight * scale));
+        const ctx = cvs.getContext('2d');
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, cvs.width, cvs.height);
+        ctx.drawImage(img, 0, 0, cvs.width, cvs.height);
+        resolve(cvs.toDataURL('image/jpeg', 0.7));
+      } catch (e) { resolve(null); }
+    };
+    img.onerror = () => resolve(null);
+    img.src = dataURL;
+  });
+}
+
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(label + ' timed out after ' + ms + 'ms')), ms)
+    ),
+  ]);
+}
 
 console.log('[pdf.js] module loaded');
 
@@ -21,7 +65,8 @@ async function loadPdfjs() {
 }
 
 /* ============================================================
-   wireColumnDrop — accept drops anywhere in the input column
+   wireColumnDrop — accept drops anywhere in the input column,
+   but don't double-fire when the inner drop-zone already handles it
    ============================================================ */
 function wireColumnDrop(column, acceptRegex, onFiles) {
   if (!column) return;
@@ -47,6 +92,8 @@ function wireColumnDrop(column, acceptRegex, onFiles) {
     if (!hasFiles(e)) return;
     stop(e);
     column.classList.remove('drag-over');
+    // If the drop landed on the inner drop-zone, let that handler own it
+    if (e.target.closest && e.target.closest('.drop-zone')) return;
     const files = [...e.dataTransfer.files].filter((f) => acceptRegex.test(f.name) || acceptRegex.test(f.type));
     if (files.length) onFiles(files);
     else toast('Unsupported file type', 'error');
@@ -102,17 +149,28 @@ function renderPdfCreator(root, toolId) {
   );
 
   async function addFile(file) {
-    console.log('[Creator] addFile', file.name, 'type:', file.type, 'size:', file.size);
+    console.log('[Creator] addFile START', file.name, 'type:', file.type, 'size:', file.size);
     const name = file.name.toLowerCase();
     try {
       if (file.type.startsWith('image/')) {
-        const src = await readAsDataURL(file);
-        const thumb = await rasterizeImageDataURL(src);
+        console.log('[Creator] step A: reading as data URL');
+        const t0 = Date.now();
+        const src = await withTimeout(readFileAsDataURL(file), 20000, 'readFileAsDataURL');
+        console.log('[Creator] step B: data URL ready in', Date.now() - t0, 'ms; length:', src ? src.length : 'null');
+
+        console.log('[Creator] step C: making thumbnail');
+        const t1 = Date.now();
+        const thumb = await withTimeout(makeThumbnail(src), 20000, 'makeThumbnail');
+        console.log('[Creator] step D: thumbnail ready in', Date.now() - t1, 'ms; ok:', !!thumb);
+
         pages.push({ id: 'p' + (++uid), name: file.name, type: 'image', src, thumbnail: thumb });
+        console.log('[Creator] page pushed, total pages:', pages.length);
       } else if (file.type === 'text/plain' || name.endsWith('.txt')) {
+        console.log('[Creator] reading text file');
         const text = await readAsText(file);
         pages.push({ id: 'p' + (++uid), name: file.name, type: 'text', text, thumbnail: rasterizeTextPage(text) });
       } else if (file.type === 'text/html' || name.endsWith('.html') || name.endsWith('.htm')) {
+        console.log('[Creator] reading HTML');
         const html = await readAsText(file);
         const pageId = 'p' + (++uid);
         pages.push({ id: pageId, name: file.name, type: 'html', html, thumbnail: null });
@@ -124,6 +182,7 @@ function renderPdfCreator(root, toolId) {
           } catch (e) { console.warn('[Creator] html thumb failed', e); }
         });
       } else if (name.endsWith('.docx')) {
+        console.log('[Creator] reading DOCX');
         const mammoth = await import('https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js');
         const lib = mammoth.default || mammoth;
         const buf = await readAsArrayBuffer(file);
@@ -138,13 +197,15 @@ function renderPdfCreator(root, toolId) {
           } catch (e) { console.warn('[Creator] docx thumb failed', e); }
         });
       } else {
+        console.warn('[Creator] unsupported type:', file.type, file.name);
         toast('Unsupported: ' + file.name, 'error');
         return;
       }
+      console.log('[Creator] calling refresh, pages:', pages.length);
       refresh();
     } catch (err) {
-      console.error('[Creator] addFile failed:', err);
-      toast('Could not read ' + file.name, 'error');
+      console.error('[Creator] addFile FAILED:', err && err.message ? err.message : err);
+      toast('Could not read ' + file.name + ': ' + (err && err.message ? err.message : err), 'error');
     }
   }
 
@@ -1346,7 +1407,7 @@ function renderPdfSign(root, toolId) {
   });
   root.querySelector('#sigUpload').addEventListener('change', async (e) => {
     const f = e.target.files[0]; if (!f) return;
-    sigDataURL = await readAsDataURL(f);
+    sigDataURL = await readFileAsDataURL(f);
     toast('Signature uploaded');
   });
   async function load(file) {
