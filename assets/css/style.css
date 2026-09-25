@@ -2317,3 +2317,252 @@ input[type="color"] {
   margin: 0;
   padding: 0;
 }
+
+/* ============================================================
+   PDF tools — FINAL layout override (append at absolute end)
+   ============================================================ */
+
+/* --- Two-column split: input panel + preview panel --- */
+.pdf-split {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  gap: 16px !important;
+  align-items: start !important;
+}
+.pdf-split.has-content {
+  grid-template-columns: 300px minmax(0, 1fr) !important;
+}
+@media (max-width: 900px) {
+  .pdf-split.has-content { grid-template-columns: 1fr !important; }
+}
+.pdf-split-input { min-width: 0 !important; }
+.pdf-split-preview { min-width: 0 !important; display: none !important; }
+.pdf-split.has-content .pdf-split-preview { display: block !important; }
+
+/* Neutralize any stale wrapper rules */
+.pdf-tool-layout { display: block !important; }
+.pdf-tool-input { display: block !important; }
+.pdf-tool-preview { display: block !important; }
+
+/* --- Page switcher: FULL-WIDTH horizontal card strip --- */
+.ps-shell {
+  display: block !important;
+  grid-template-columns: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+}
+.ps-strip-wrap {
+  display: block !important;
+  max-height: none !important;
+  min-width: 0 !important;
+}
+.ps-strip {
+  display: flex !important;
+  flex-direction: row !important;
+  gap: 12px !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  padding: 4px 4px 14px !important;
+  max-height: none !important;
+  scroll-snap-type: x proximity;
+  min-height: 0 !important;
+}
+.ps-strip::-webkit-scrollbar { height: 8px; }
+.ps-strip::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 4px;
+}
+.ps-strip::-webkit-scrollbar-track { background: transparent; }
+
+/* Kill the leftover big viewer — the strip is the preview now */
+.ps-viewer { display: none !important; }
+.ps-empty {
+  color: var(--text-3);
+  font-size: 13px;
+  font-style: italic;
+  padding: 40px 12px;
+  text-align: center;
+}
+.ps-hint {
+  font-size: 10.5px !important;
+  color: var(--text-3) !important;
+  text-align: center !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* --- Page cards (override .ps-card AND legacy .ps-thumb) --- */
+.ps-card,
+.ps-thumb {
+  flex: 0 0 auto !important;
+  width: 136px !important;
+  aspect-ratio: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  cursor: pointer !important;
+  user-select: none !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  overflow: visible !important;
+  scroll-snap-align: start;
+  position: relative !important;
+}
+
+/* Media frame */
+.ps-card-media,
+.ps-thumb-media {
+  position: relative !important;
+  width: 100% !important;
+  aspect-ratio: 3 / 4 !important;
+  background: var(--surface) !important;
+  border: 2px solid var(--border) !important;
+  border-radius: 10px !important;
+  overflow: hidden !important;
+  transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s !important;
+  display: grid !important;
+  place-items: center !important;
+  padding: 8px !important;
+  box-sizing: border-box !important;
+}
+.ps-card:hover .ps-card-media,
+.ps-thumb:hover .ps-thumb-media {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.1) !important;
+}
+.ps-card.active .ps-card-media,
+.ps-thumb.active .ps-thumb-media {
+  border-color: var(--brand) !important;
+}
+.ps-card.selected .ps-card-media,
+.ps-thumb.selected .ps-thumb-media {
+  border-color: var(--success) !important;
+}
+.ps-card.drop-target .ps-card-media,
+.ps-thumb.drop-target .ps-thumb-media {
+  border-style: dashed !important;
+  border-color: var(--brand) !important;
+}
+.ps-card-media img,
+.ps-thumb-media img {
+  max-width: 100% !important;
+  max-height: 100% !important;
+  object-fit: contain !important;
+  border-radius: 4px !important;
+  background: #fff !important;
+  display: block !important;
+}
+.ps-card-empty,
+.ps-thumb-empty {
+  width: 100%; height: 100%;
+  background: repeating-linear-gradient(
+    45deg,
+    var(--surface-2), var(--surface-2) 8px,
+    var(--surface) 8px, var(--surface) 16px
+  );
+  border-radius: 4px;
+}
+
+/* Card number badge */
+.ps-card-num,
+.ps-thumb-num {
+  position: absolute !important;
+  top: 6px !important;
+  left: 6px !important;
+  bottom: auto !important;
+  background: rgba(15, 23, 42, 0.75) !important;
+  color: #fff !important;
+  font-family: var(--mono) !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  padding: 1px 6px !important;
+  border-radius: 4px !important;
+  line-height: 1.4 !important;
+}
+
+/* Remove button */
+.ps-card-rm,
+.ps-thumb-rm {
+  position: absolute !important;
+  top: 6px !important;
+  right: 6px !important;
+  width: 22px !important;
+  height: 22px !important;
+  border-radius: 50% !important;
+  background: rgba(15, 23, 42, 0.75) !important;
+  color: #fff !important;
+  border: none !important;
+  font-size: 15px !important;
+  line-height: 1 !important;
+  cursor: pointer !important;
+  opacity: 0 !important;
+  transition: opacity 0.15s, background 0.15s !important;
+  display: grid !important;
+  place-items: center !important;
+  padding: 0 !important;
+}
+.ps-card:hover .ps-card-rm,
+.ps-thumb:hover .ps-thumb-rm {
+  opacity: 1 !important;
+}
+.ps-card-rm:hover,
+.ps-thumb-rm:hover {
+  background: var(--danger) !important;
+}
+
+/* Selection checkbox */
+.ps-card-check,
+.ps-thumb-check {
+  position: absolute !important;
+  top: 6px !important;
+  left: 6px !important;
+  width: 22px !important;
+  height: 22px !important;
+  border-radius: 50% !important;
+  background: var(--surface) !important;
+  border: 1.5px solid var(--border-strong) !important;
+  color: transparent !important;
+  font-size: 11px !important;
+  font-weight: 800 !important;
+  display: grid !important;
+  place-items: center !important;
+  transition: background 0.15s, color 0.15s, border-color 0.15s !important;
+}
+.ps-card.selected .ps-card-check,
+.ps-thumb.selected .ps-thumb-check {
+  background: var(--success) !important;
+  border-color: var(--success) !important;
+  color: #fff !important;
+}
+
+/* --- Tool tabs: single row, horizontal scroll --- */
+.tool-tabs {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  gap: 6px !important;
+  padding: 6px !important;
+  background: var(--surface-2) !important;
+  border-radius: var(--radius) !important;
+  margin: 0 auto 28px !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+  justify-content: flex-start !important;
+}
+.tool-tabs::-webkit-scrollbar { height: 4px; }
+.tool-tabs::-webkit-scrollbar-thumb {
+  background: var(--border-strong) !important;
+  border-radius: 4px;
+}
+.tool-tabs::-webkit-scrollbar-track { background: transparent; }
+.tool-tab {
+  flex: 0 0 auto !important;
+  white-space: nowrap !important;
+}
