@@ -28,17 +28,23 @@ function renderPdfCreator(root, toolId) {
   let switcher = null;
   let uid = 0;
 
-  root.innerHTML = `
+   root.innerHTML = `
     <div class="panel">
-      <div id="pcDrop"></div>
-      <div class="format-note">
-        <b>Supported:</b> JPG · PNG · WEBP · GIF · TXT · HTML · DOCX — each becomes a page in the PDF.
-      </div>
-      <div id="pcWorkspace" class="hidden">
-        <div id="pcSwitcher"></div>
-        <div class="actions">
-          <button type="button" id="pcClear" class="btn btn-outline">Clear all</button>
-          <button type="button" id="pcGo" class="btn btn-primary">${icon('file', 16)} Generate PDF</button>
+      <div class="pdf-tool-layout">
+        <div class="pdf-tool-input">
+          <div id="pcDrop"></div>
+          <div class="format-note" style="margin-top:0">
+            <b>Supported:</b> JPG · PNG · WEBP · GIF · TXT · HTML · DOCX — each becomes a page.
+          </div>
+        </div>
+        <div class="pdf-tool-preview">
+          <div id="pcWorkspace" class="hidden">
+            <div id="pcSwitcher"></div>
+            <div class="actions">
+              <button type="button" id="pcClear" class="btn btn-outline">Clear all</button>
+              <button type="button" id="pcGo" class="btn btn-primary">${icon('file', 16)} Generate PDF</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>`;
@@ -219,17 +225,23 @@ function renderPdfMerge(root, toolId) {
 
   const PAGE_THUMB_LIMIT = 300;
 
-  root.innerHTML = `
+   root.innerHTML = `
     <div class="panel">
-      <div id="pmDrop"></div>
-      <div class="format-note">
-        <b>All pages are loaded individually.</b> Reorder or remove any page before merging.
-      </div>
-      <div id="pmWorkspace" class="hidden">
-        <div id="pmSwitcher"></div>
-        <div class="actions">
-          <button type="button" id="pmClear" class="btn btn-outline">Clear all</button>
-          <button type="button" id="pmGo" class="btn btn-primary">${icon('layers', 16)} Merge selected</button>
+      <div class="pdf-tool-layout">
+        <div class="pdf-tool-input">
+          <div id="pmDrop"></div>
+          <div class="format-note" style="margin-top:0">
+            <b>All pages load individually.</b> Reorder or remove any page before merging.
+          </div>
+        </div>
+        <div class="pdf-tool-preview">
+          <div id="pmWorkspace" class="hidden">
+            <div id="pmSwitcher"></div>
+            <div class="actions">
+              <button type="button" id="pmClear" class="btn btn-outline">Clear all</button>
+              <button type="button" id="pmGo" class="btn btn-primary">${icon('layers', 16)} Merge selected</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>`;
@@ -367,25 +379,33 @@ function renderPdfSplit(root, toolId) {
   let selectedIds = new Set();
   let switcher = null;
 
-  root.innerHTML = `
+    root.innerHTML = `
     <div class="panel">
-      <div id="psDrop"></div>
-      <div id="psWorkspace" class="hidden">
-        <div class="format-note">
-          <b>Click thumbnails to select pages.</b> The selected pages will be extracted into a new PDF.
-          Leave nothing selected to split every page into separate files.
+      <div class="pdf-tool-layout">
+        <div class="pdf-tool-input">
+          <div id="psDrop"></div>
+          <div class="format-note" style="margin-top:0">
+            <b>Click thumbnails to select pages.</b> Selected pages are extracted into a new PDF.
+            Leave nothing selected to split every page individually.
+          </div>
+          <div class="field-group" style="margin-top:0;flex-direction:column;align-items:stretch;gap:8px">
+            <label class="checkbox-row" style="padding:0"><input type="checkbox" id="psEvery"/> Split every page individually</label>
+            <div style="display:flex;gap:8px">
+              <button type="button" id="psSelectAll" class="btn btn-outline btn-sm" style="flex:1">Select all</button>
+              <button type="button" id="psSelectNone" class="btn btn-outline btn-sm" style="flex:1">Clear</button>
+            </div>
+          </div>
         </div>
-        <div id="psSwitcher"></div>
-        <div class="field-group" style="margin-top:16px">
-          <label class="checkbox-row"><input type="checkbox" id="psEvery"/> Split every page individually</label>
-          <button type="button" id="psSelectAll" class="btn btn-outline btn-sm">Select all</button>
-          <button type="button" id="psSelectNone" class="btn btn-outline btn-sm">Clear selection</button>
+        <div class="pdf-tool-preview">
+          <div id="psWorkspace" class="hidden">
+            <div id="psSwitcher"></div>
+            <div class="actions">
+              <button type="button" id="psReset" class="btn btn-outline">Reset</button>
+              <button type="button" id="psGo" class="btn btn-primary">${icon('scissors', 16)} Split</button>
+            </div>
+            <div id="psResults" class="split-results"></div>
+          </div>
         </div>
-        <div class="actions">
-          <button type="button" id="psReset" class="btn btn-outline">Reset</button>
-          <button type="button" id="psGo" class="btn btn-primary">${icon('scissors', 16)} Split</button>
-        </div>
-        <div id="psResults" class="split-results"></div>
       </div>
     </div>`;
 

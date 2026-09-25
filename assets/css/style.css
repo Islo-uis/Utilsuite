@@ -1891,3 +1891,41 @@ input[type="color"] {
   padding: 2px 0 0;
   line-height: 1.35;
 }
+/* ============================================================
+   PDF tool layout — input on the left, preview on the right
+   ============================================================ */
+.pdf-tool-layout {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .pdf-tool-layout {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}
+
+.pdf-tool-input {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  position: sticky;
+  top: 20px;
+}
+@media (max-width: 900px) {
+  .pdf-tool-input { position: static; }
+}
+
+.pdf-tool-input .drop-zone {
+  padding: 32px 16px;
+}
+.pdf-tool-input .dz-title { font-size: 14px; }
+.pdf-tool-input .dz-hint { font-size: 11.5px; }
+
+.pdf-tool-preview { min-width: 0; }
+
+.pdf-tool-preview .ps-shell {
+  margin-top: 0;
+}
