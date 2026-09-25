@@ -29,76 +29,61 @@ export function createPageSwitcher(container, opts = {}) {
 
   container.innerHTML = `
     <div class="ps-shell">
-      <div class="ps-strip-wrap">
-        <div class="ps-strip" id="psStrip" role="list"></div>
-        <p class="ps-hint">${
-          [
-            'Drag to reorder',
-            selectable ? 'Click to select' : null,
-            allowDelete ? 'Hover to remove' : null,
-          ].filter(Boolean).join(' · ')
-        }</p>
-      </div>
-      <div class="ps-viewer">
-        <div class="ps-viewer-inner" id="psViewer"></div>
-        <div class="ps-viewer-nav">
-          <button type="button" class="btn btn-outline btn-sm" id="psPrev" aria-label="Previous page">←</button>
-          <span class="ps-page-counter" id="psCounter">0 / 0</span>
-          <button type="button" class="btn btn-outline btn-sm" id="psNext" aria-label="Next page">→</button>
-        </div>
-      </div>
+      <div class="ps-strip" id="psStrip" role="list"></div>
+      <p class="ps-hint">${
+        [
+          'Click to focus',
+          'Drag to reorder',
+          selectable ? 'Click the dot to select' : null,
+          allowDelete ? 'Hover to remove' : null,
+        ].filter(Boolean).join(' · ')
+      }</p>
     </div>`;
 
-  const viewer = container.querySelector('#psViewer');
   const strip = container.querySelector('#psStrip');
-  const counter = container.querySelector('#psCounter');
 
   function render() {
     if (!pages.length) {
-      viewer.innerHTML = '<div class="ps-empty">No pages yet</div>';
-      strip.innerHTML = '';
-      counter.textContent = '0 / 0';
+      strip.innerHTML = '<div class="ps-empty">No pages yet</div>';
       return;
     }
 
     if (currentIndex >= pages.length) currentIndex = pages.length - 1;
     if (currentIndex < 0) currentIndex = 0;
 
-    const p = pages[currentIndex];
-    viewer.innerHTML = p.thumbnail
-      ? `<img src="${p.thumbnail}" alt="${escapeHTML(p.label || 'Page ' + (currentIndex + 1))}" />`
-      : `<div class="ps-empty">${escapeHTML(p.label || 'Page')}</div>`;
-    counter.textContent = (currentIndex + 1) + ' / ' + pages.length;
-
     strip.innerHTML = pages.map((pg, i) => `
-      <div class="ps-thumb ${i === currentIndex ? 'active' : ''} ${selectedIds.has(pg.id) ? 'selected' : ''}"
+      <div class="ps-card ${i === currentIndex ? 'active' : ''} ${selectedIds.has(pg.id) ? 'selected' : ''}"
            data-i="${i}" draggable="true" role="listitem">
-        ${pg.thumbnail ? `<img src="${pg.thumbnail}" alt="" />` : '<div class="ps-thumb-empty"></div>'}
-        <span class="ps-thumb-num">${i + 1}</span>
-        ${allowDelete ? `<button type="button" class="ps-thumb-rm" data-rm="${i}" aria-label="Remove">×</button>` : ''}
-        ${selectable ? `<span class="ps-thumb-check">${selectedIds.has(pg.id) ? '✓' : ''}</span>` : ''}
+        <div class="ps-card-media">
+          ${pg.thumbnail ? `<img src="${pg.thumbnail}" alt="" />` : '<div class="ps-card-empty"></div>'}
+          <span class="ps-card-num">${i + 1}</span>
+          ${allowDelete ? `<button type="button" class="ps-card-rm" data-rm="${i}" aria-label="Remove">×</button>` : ''}
+          ${selectable ? `<span class="ps-card-check">${selectedIds.has(pg.id) ? '✓' : ''}</span>` : ''}
+        </div>
+        <div class="ps-card-name" title="${escapeHTML(pg.label || 'Page ' + (i + 1))}">
+          ${escapeHTML(pg.label || 'Page ' + (i + 1))}
+        </div>
       </div>`).join('');
 
-    // Click behaviour
-    strip.querySelectorAll('.ps-thumb').forEach((el) => {
+    strip.querySelectorAll('.ps-card').forEach((el) => {
       const i = +el.dataset.i;
       el.addEventListener('click', (e) => {
-        if (e.target.closest('.ps-thumb-rm')) return;
+        if (e.target.closest('.ps-card-rm')) return;
         if (selectable) {
           const id = pages[i].id;
           if (selectedIds.has(id)) selectedIds.delete(id);
           else selectedIds.add(id);
           if (opts.onSelectionChange) opts.onSelectionChange([...selectedIds]);
+          render();
         } else {
           currentIndex = i;
           if (opts.onPageChange) opts.onPageChange(i);
+          render();
         }
-        render();
       });
     });
 
-    // Delete buttons
-    strip.querySelectorAll('.ps-thumb-rm').forEach((b) => {
+    strip.querySelectorAll('.ps-card-rm').forEach((b) => {
       b.addEventListener('click', (e) => {
         e.stopPropagation();
         const i = +b.dataset.rm;
@@ -111,9 +96,8 @@ export function createPageSwitcher(container, opts = {}) {
       });
     });
 
-    // Drag-to-reorder
     let dragIdx = null;
-    strip.querySelectorAll('.ps-thumb').forEach((el) => {
+    strip.querySelectorAll('.ps-card').forEach((el) => {
       el.addEventListener('dragstart', (e) => {
         dragIdx = +el.dataset.i;
         e.dataTransfer.effectAllowed = 'move';
@@ -139,21 +123,6 @@ export function createPageSwitcher(container, opts = {}) {
       });
     });
   }
-
-  container.querySelector('#psPrev').addEventListener('click', () => {
-    if (currentIndex > 0) {
-      currentIndex--;
-      if (opts.onPageChange) opts.onPageChange(currentIndex);
-      render();
-    }
-  });
-  container.querySelector('#psNext').addEventListener('click', () => {
-    if (currentIndex < pages.length - 1) {
-      currentIndex++;
-      if (opts.onPageChange) opts.onPageChange(currentIndex);
-      render();
-    }
-  });
 
   render();
 
