@@ -4,8 +4,8 @@ import { escapeHTML } from '../utils.js';
    createPageSwitcher
    ------------------------------------------------------------
    Renders a two-pane widget:
-   - Left: large preview of the currently-selected page
-   - Right: scrollable thumbnail strip (drag to reorder)
+   - Left: reorder grid of thumbnails (dominant)
+   - Right: preview of the currently-selected page (smaller)
 
    Options:
      pages              [{ id, label, thumbnail }]
@@ -27,7 +27,7 @@ export function createPageSwitcher(container, opts = {}) {
   const selectable = !!opts.selectable;
   const allowDelete = !!opts.allowDelete;
 
-    container.innerHTML = `
+  container.innerHTML = `
     <div class="ps-shell">
       <div class="ps-strip-wrap">
         <div class="ps-strip" id="psStrip" role="list"></div>
@@ -187,7 +187,7 @@ export async function rasterizePdfPage(pdfDoc, pageNum, scale = 0.35) {
 }
 
 /* ============================================================
-   rasterizeRasterPage — image data URL (for Creator)
+   rasterizeImageDataURL — image data URL (for Creator)
    ============================================================ */
 export function rasterizeImageDataURL(dataURL, maxW = 300) {
   return new Promise((resolve) => {
