@@ -63,27 +63,23 @@ function renderPdfCreator(root, toolId) {
   let uid = 0;
 
   root.innerHTML = `
-    <div class="panel">
-      <div class="pdf-tool-layout">
-        <div class="pdf-tool-input">
-          <div id="pcDrop"></div>
-          <div class="format-note" style="margin-top:0">
-            <b>Supported:</b> JPG · PNG · WEBP · GIF · TXT · HTML · DOCX — each becomes a page.
-          </div>
+    <div class="pdf-split">
+      <div class="panel pdf-split-input pdf-tool-input">
+        <div id="pcDrop"></div>
+        <div class="format-note" style="margin-top:14px">
+          <b>Supported:</b> JPG · PNG · WEBP · GIF · TXT · HTML · DOCX — each becomes a page.
         </div>
-        <div class="pdf-tool-preview">
-          <div id="pcWorkspace" class="hidden">
-            <div id="pcSwitcher"></div>
-            <div class="actions">
-              <button type="button" id="pcClear" class="btn btn-outline">Clear all</button>
-              <button type="button" id="pcGo" class="btn btn-primary">${icon('file', 16)} Generate PDF</button>
-            </div>
+      </div>
+      <div class="panel pdf-split-preview pdf-tool-preview">
+        <div id="pcWorkspace" class="hidden">
+          <div id="pcSwitcher"></div>
+          <div class="actions">
+            <button type="button" id="pcClear" class="btn btn-outline">Clear all</button>
+            <button type="button" id="pcGo" class="btn btn-primary">${icon('file', 16)} Generate PDF</button>
           </div>
         </div>
       </div>
     </div>`;
-
-  console.log('[Creator] HTML injected');
 
   root.querySelector('#pcDrop').appendChild(makeDropZone({
     accept: 'image/*,text/plain,.txt,.html,.htm,.docx,.pdf',
@@ -95,8 +91,6 @@ function renderPdfCreator(root, toolId) {
       files.forEach(addFile);
     },
   }));
-
-  console.log('[Creator] drop zone added');
 
   wireColumnDrop(
     root.querySelector('.pdf-tool-input'),
@@ -112,18 +106,13 @@ function renderPdfCreator(root, toolId) {
     const name = file.name.toLowerCase();
     try {
       if (file.type.startsWith('image/')) {
-        console.log('[Creator] treating as image');
         const src = await readAsDataURL(file);
-        console.log('[Creator] readAsDataURL done, length:', src.length);
         const thumb = await rasterizeImageDataURL(src);
-        console.log('[Creator] thumbnail generated:', !!thumb);
         pages.push({ id: 'p' + (++uid), name: file.name, type: 'image', src, thumbnail: thumb });
       } else if (file.type === 'text/plain' || name.endsWith('.txt')) {
-        console.log('[Creator] treating as text');
         const text = await readAsText(file);
         pages.push({ id: 'p' + (++uid), name: file.name, type: 'text', text, thumbnail: rasterizeTextPage(text) });
       } else if (file.type === 'text/html' || name.endsWith('.html') || name.endsWith('.htm')) {
-        console.log('[Creator] treating as html');
         const html = await readAsText(file);
         const pageId = 'p' + (++uid);
         pages.push({ id: pageId, name: file.name, type: 'html', html, thumbnail: null });
@@ -135,7 +124,6 @@ function renderPdfCreator(root, toolId) {
           } catch (e) { console.warn('[Creator] html thumb failed', e); }
         });
       } else if (name.endsWith('.docx')) {
-        console.log('[Creator] treating as docx');
         const mammoth = await import('https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js');
         const lib = mammoth.default || mammoth;
         const buf = await readAsArrayBuffer(file);
@@ -150,11 +138,9 @@ function renderPdfCreator(root, toolId) {
           } catch (e) { console.warn('[Creator] docx thumb failed', e); }
         });
       } else {
-        console.warn('[Creator] unsupported file type:', file.type, file.name);
         toast('Unsupported: ' + file.name, 'error');
         return;
       }
-      console.log('[Creator] pages array now has', pages.length, 'entries');
       refresh();
     } catch (err) {
       console.error('[Creator] addFile failed:', err);
@@ -178,9 +164,8 @@ function renderPdfCreator(root, toolId) {
 
   function refresh() {
     const ws = root.querySelector('#pcWorkspace');
-    const layout = root.querySelector('.pdf-tool-layout');
+    const layout = root.querySelector('.pdf-split');
     const wrap = root.querySelector('#pcSwitcher');
-    console.log('[Creator] refresh — pages:', pages.length, 'ws?', !!ws, 'layout?', !!layout, 'wrap?', !!wrap);
 
     if (!pages.length) {
       ws.classList.add('hidden');
@@ -191,7 +176,6 @@ function renderPdfCreator(root, toolId) {
     if (layout) layout.classList.add('has-content');
 
     if (!switcher) {
-      console.log('[Creator] creating switcher');
       switcher = createPageSwitcher(wrap, {
         pages: pages.map((p) => ({ id: p.id, label: p.name, thumbnail: p.thumbnail })),
         allowDelete: true,
@@ -202,7 +186,6 @@ function renderPdfCreator(root, toolId) {
         },
       });
     } else {
-      console.log('[Creator] updating switcher');
       switcher.setPages(pages.map((p) => ({ id: p.id, label: p.name, thumbnail: p.thumbnail })));
     }
   }
@@ -291,21 +274,19 @@ function renderPdfMerge(root, toolId) {
   const PAGE_THUMB_LIMIT = 300;
 
   root.innerHTML = `
-    <div class="panel">
-      <div class="pdf-tool-layout">
-        <div class="pdf-tool-input">
-          <div id="pmDrop"></div>
-          <div class="format-note" style="margin-top:0">
-            <b>All pages load individually.</b> Reorder or remove any page before merging.
-          </div>
+    <div class="pdf-split">
+      <div class="panel pdf-split-input pdf-tool-input">
+        <div id="pmDrop"></div>
+        <div class="format-note" style="margin-top:14px">
+          <b>All pages load individually.</b> Reorder or remove any page before merging.
         </div>
-        <div class="pdf-tool-preview">
-          <div id="pmWorkspace" class="hidden">
-            <div id="pmSwitcher"></div>
-            <div class="actions">
-              <button type="button" id="pmClear" class="btn btn-outline">Clear all</button>
-              <button type="button" id="pmGo" class="btn btn-primary">${icon('layers', 16)} Merge selected</button>
-            </div>
+      </div>
+      <div class="panel pdf-split-preview pdf-tool-preview">
+        <div id="pmWorkspace" class="hidden">
+          <div id="pmSwitcher"></div>
+          <div class="actions">
+            <button type="button" id="pmClear" class="btn btn-outline">Clear all</button>
+            <button type="button" id="pmGo" class="btn btn-primary">${icon('layers', 16)} Merge selected</button>
           </div>
         </div>
       </div>
@@ -360,7 +341,7 @@ function renderPdfMerge(root, toolId) {
 
   function refresh() {
     const ws = root.querySelector('#pmWorkspace');
-    const layout = root.querySelector('.pdf-tool-layout');
+    const layout = root.querySelector('.pdf-split');
     const wrap = root.querySelector('#pmSwitcher');
 
     if (!entries.length) {
@@ -445,31 +426,29 @@ function renderPdfSplit(root, toolId) {
   let switcher = null;
 
   root.innerHTML = `
-    <div class="panel">
-      <div class="pdf-tool-layout">
-        <div class="pdf-tool-input">
-          <div id="psDrop"></div>
-          <div class="format-note" style="margin-top:0">
-            <b>Click thumbnails to select pages.</b> Selected pages are extracted into a new PDF.
-            Leave nothing selected to split every page individually.
-          </div>
-          <div class="field-group" style="margin-top:0;flex-direction:column;align-items:stretch;gap:8px">
-            <label class="checkbox-row" style="padding:0"><input type="checkbox" id="psEvery"/> Split every page individually</label>
-            <div style="display:flex;gap:8px">
-              <button type="button" id="psSelectAll" class="btn btn-outline btn-sm" style="flex:1">Select all</button>
-              <button type="button" id="psSelectNone" class="btn btn-outline btn-sm" style="flex:1">Clear</button>
-            </div>
+    <div class="pdf-split">
+      <div class="panel pdf-split-input pdf-tool-input">
+        <div id="psDrop"></div>
+        <div class="format-note" style="margin-top:14px">
+          <b>Click thumbnails to select pages.</b> Selected pages are extracted into a new PDF.
+          Leave nothing selected to split every page individually.
+        </div>
+        <div class="field-group" style="margin-top:14px;flex-direction:column;align-items:stretch;gap:8px">
+          <label class="checkbox-row" style="padding:0"><input type="checkbox" id="psEvery"/> Split every page individually</label>
+          <div style="display:flex;gap:8px">
+            <button type="button" id="psSelectAll" class="btn btn-outline btn-sm" style="flex:1">Select all</button>
+            <button type="button" id="psSelectNone" class="btn btn-outline btn-sm" style="flex:1">Clear</button>
           </div>
         </div>
-        <div class="pdf-tool-preview">
-          <div id="psWorkspace" class="hidden">
-            <div id="psSwitcher"></div>
-            <div class="actions">
-              <button type="button" id="psReset" class="btn btn-outline">Reset</button>
-              <button type="button" id="psGo" class="btn btn-primary">${icon('scissors', 16)} Split</button>
-            </div>
-            <div id="psResults" class="split-results"></div>
+      </div>
+      <div class="panel pdf-split-preview pdf-tool-preview">
+        <div id="psWorkspace" class="hidden">
+          <div id="psSwitcher"></div>
+          <div class="actions">
+            <button type="button" id="psReset" class="btn btn-outline">Reset</button>
+            <button type="button" id="psGo" class="btn btn-primary">${icon('scissors', 16)} Split</button>
           </div>
+          <div id="psResults" class="split-results"></div>
         </div>
       </div>
     </div>`;
@@ -490,7 +469,7 @@ function renderPdfSplit(root, toolId) {
     pdfDoc = await pdfjsLib.getDocument({ data: await readAsArrayBuffer(file) }).promise;
 
     root.querySelector('#psWorkspace').classList.remove('hidden');
-    root.querySelector('.pdf-tool-layout').classList.add('has-content');
+    root.querySelector('.pdf-split').classList.add('has-content');
     root.querySelector('#psResults').innerHTML = '';
     selectedIds = new Set();
 
@@ -529,7 +508,7 @@ function renderPdfSplit(root, toolId) {
     switcher = null;
     root.querySelector('#psSwitcher').innerHTML = '';
     root.querySelector('#psWorkspace').classList.add('hidden');
-    root.querySelector('.pdf-tool-layout').classList.remove('has-content');
+    root.querySelector('.pdf-split').classList.remove('has-content');
     root.querySelector('#psResults').innerHTML = '';
   });
 
@@ -614,7 +593,7 @@ function renderPdfSplit(root, toolId) {
 }
 
 /* ============================================================
-   PDF Reorder
+   PDF Reorder Pages
    ============================================================ */
 function renderPdfReorder(root, toolId) {
   let pdfFile = null;
@@ -709,7 +688,7 @@ function renderPdfReorder(root, toolId) {
 }
 
 /* ============================================================
-   PDF Rotate
+   PDF Rotate Pages
    ============================================================ */
 function renderPdfRotate(root, toolId) {
   let pdfFile = null;
@@ -847,7 +826,7 @@ function renderPdfCompress(root, toolId) {
 }
 
 /* ============================================================
-   PDF → Images
+   PDF → Image
    ============================================================ */
 function renderPdfToImages(root, toolId) {
   let pdfFile = null;
@@ -1204,7 +1183,7 @@ function renderPdfRedact(root, toolId) {
 }
 
 /* ============================================================
-   PDF Password
+   PDF Password Protect
    ============================================================ */
 function renderPdfPassword(root, toolId) {
   let pdfFile = null;
