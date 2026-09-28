@@ -636,6 +636,155 @@ function renderSvgToImage(root, toolId) {
   });
 }
 
+/* ============================================================
+   Instagram Grid Splitter
+   ============================================================ */
+function renderGridSplitter(root, toolId) {
+  let sourceImg = null;
+  let tiles = [];
+  let gridN = 3;
+
+  root.innerHTML = `
+    <div class="panel">
+      <div id="gsDrop"></div>
+      <div id="gsWorkspace" class="hidden">
+        <div class="field-group" style="margin-top:20px">
+          <div class="field">
+            <label>Grid size</label>
+            <select id="gsSize">
+              <option value="2">2 × 2</option>
+              <option value="3" selected>3 × 3</option>
+              <option value="4">4 × 4</option>
+              <option value="6">6 × 6</option>
+              <option value="9">9 × 9</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Tile format</label>
+            <select id="gsFmt">
+              <option value="image/jpeg">JPEG</option>
+              <option value="image/png" selected>PNG</option>
+            </select>
+          </div>
+          <button id="gsZip" class="btn btn-outline">${icon('archive', 16)} Download ZIP</button>
+          <button id="gsAll" class="btn btn-primary">${icon('download', 16)} Download tiles</button>
+        </div>
+        <div class="format-note" style="margin-top:16px">
+          <b>Instagram tip:</b> Post tiles in <b>reverse order</b> (highest number first) so the top-left tile lands in the top-left of your profile grid.
+        </div>
+        <div id="gsPreview" class="split-grid"></div>
+      </div>
+    </div>`;
+
+  root.querySelector('#gsDrop').appendChild(makeDropZone({
+    accept: 'image/*',
+    multiple: false,
+    title: 'Drop an image to split',
+    hint: 'Center-cropped to a square, then split into tiles',
+    onFiles: ([file]) => load(file),
+  }));
+
+  root.querySelector('#gsSize').addEventListener('change', (e) => {
+    gridN = +e.target.value;
+    if (sourceImg) build();
+  });
+  root.querySelector('#gsFmt').addEventListener('change', () => {
+    if (sourceImg) build();
+  });
+
+  async function load(file) {
+    sourceImg = await loadImage(file);
+    root.querySelector('#gsWorkspace').classList.remove('hidden');
+    build();
+    analytics.trackToolStart(toolId);
+  }
+
+  function build() {
+    const n = gridN;
+    const size = Math.min(sourceImg.naturalWidth, sourceImg.naturalHeight);
+    const sx = (sourceImg.naturalWidth - size) / 2;
+    const sy = (sourceImg.naturalHeight - size) / 2;
+    const tileSize = Math.floor(size / n);
+
+    tiles = [];
+    const preview = root.querySelector('#gsPreview');
+    preview.style.gridTemplateColumns = `repeat(${n}, 1fr)`;
+    preview.innerHTML = '';
+
+    for (let r = 0; r < n; r++) {
+      for (let c = 0; c < n; c++) {
+        const cvs = document.createElement('canvas');
+        cvs.width = tileSize;
+        cvs.height = tileSize;
+        cvs.getContext('2d').drawImage(
+          sourceImg,
+          sx + c * tileSize, sy + r * tileSize, tileSize, tileSize,
+          0, 0, tileSize, tileSize
+        );
+        const index = r * n + c;
+        tiles.push({ index, canvas: cvs });
+
+        const img = document.createElement('img');
+        img.src = cvs.toDataURL('image/jpeg', 0.92);
+        img.alt = 'Tile ' + (index + 1);
+        preview.appendChild(img);
+      }
+    }
+    analytics.trackToolComplete(toolId);
+  }
+
+  function filenameFor(tile) {
+    const num = String(tile.index + 1).padStart(3, '0');
+    return `${gridN}x${gridN}_${num}`;
+  }
+
+  root.querySelector('#gsAll').addEventListener('click', () => {
+    if (!tiles.length) return;
+    const fmt = root.querySelector('#gsFmt').value;
+    const ext = fmt === 'image/png' ? 'png' : 'jpg';
+    tiles.forEach((t, i) => {
+      setTimeout(() => {
+        t.canvas.toBlob((blob) => {
+          download(blob, `${filenameFor(t)}.${ext}`);
+        }, fmt, fmt === 'image/png' ? undefined : 0.92);
+      }, i * 120);
+    });
+    analytics.trackToolDownload(toolId);
+    toast('Downloading ' + tiles.length + ' tiles', 'success');
+  });
+
+  root.querySelector('#gsZip').addEventListener('click', async () => {
+    if (!tiles.length) return;
+    const { default: JSZip } = await import('https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm');
+    const zip = new JSZip();
+    const folder = zip.folder(`instagram_${gridN}x${gridN}`);
+    const fmt = root.querySelector('#gsFmt').value;
+    const ext = fmt === 'image/png' ? 'png' : 'jpg';
+
+    for (const t of tiles) {
+      const dataUrl = t.canvas.toDataURL(fmt, fmt === 'image/png' ? undefined : 0.92);
+      const base64 = dataUrl.split(',')[1];
+      folder.file(`${filenameFor(t)}.${ext}`, base64, { base64: true });
+    }
+
+    folder.file('README.txt',
+`Instagram Grid Splitter — ${gridN}x${gridN}
+==========================================
+Upload these tiles to Instagram in REVERSE order (highest number first)
+so they line up correctly in your profile grid.
+
+If posting as a carousel: post in normal order (001, 002, 003…).
+
+Tiles: ${tiles.length} (each ${tiles[0].canvas.width}×${tiles[0].canvas.height} px)
+`);
+
+    const blob = await zip.generateAsync({ type: 'blob' });
+    download(blob, `instagram_${gridN}x${gridN}.zip`);
+    analytics.trackToolDownload(toolId);
+    toast('ZIP downloaded', 'success');
+  });
+}
+
 export const IMAGE_TOOLS = {
   'background-remover': { name: 'Background Remover',   render: renderBackgroundRemover },
   'compressor':         { name: 'Compressor',           render: renderCompressor },
@@ -644,4 +793,5 @@ export const IMAGE_TOOLS = {
   'svg-to-image':       { name: 'SVG → Image',          render: renderSvgToImage },
   'social-resizer':     { name: 'Social Media Resizer', render: renderSocialResizer },
   'qr-generator':       { name: 'QR Generator',         render: renderQRGenerator },
+  'grid-splitter':      { name: 'Instagram Grid Splitter', render: renderGridSplitter },
 };
